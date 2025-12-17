@@ -1,0 +1,8 @@
+{
+  "name": "DubberAI MVP",
+  "description": "A modular, provider-based AI video dubbing platform MVP.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
