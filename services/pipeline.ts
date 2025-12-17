@@ -1,40 +1,55 @@
-import { JobState, JobStatus } from '../types';
+import { JobState, JobStatus, LogEntry } from '../types';
 import { ProviderRegistry } from './providers';
-
-/**
- * PIPELINE ENGINE
- * This orchestrates the flow. It doesn't know about specific API implementations.
- * It strictly talks to the Interfaces via the Registry.
- */
 
 type StateUpdater = (update: Partial<JobState>) => void;
 
-// Helper to read file to Base64 with progress
+// Helper to create a log entry with a STATIC string time
+const createLog = (message: string): LogEntry => {
+    return {
+        message,
+        time: new Date().toLocaleTimeString('fa-IR', { hour12: false })
+    };
+};
+
 const readFileWithProgress = (file: File, onProgress: (percent: number) => void): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        
-        reader.onprogress = (event) => {
-            if (event.lengthComputable) {
-                const percent = (event.loaded / event.total) * 100;
-                onProgress(percent);
-            }
-        };
+        let fakeProgress = 0;
+        const totalFakeDuration = 1200; 
+        const intervalTime = 50;
+        const step = 100 / (totalFakeDuration / intervalTime);
+
+        const progressInterval = setInterval(() => {
+            fakeProgress = Math.min(99, fakeProgress + step);
+            onProgress(fakeProgress);
+        }, intervalTime);
 
         reader.onload = () => {
+            clearInterval(progressInterval);
+            onProgress(100);
             if (typeof reader.result === 'string') {
-                // Remove Data URL prefix to get raw base64
-                const base64 = reader.result.split(',')[1];
-                resolve(base64);
-            } else {
-                reject(new Error("Failed to read file"));
-            }
+                resolve(reader.result.split(',')[1]);
+            } else reject(new Error("Failed to read file"));
         };
-
-        reader.onerror = () => reject(new Error("File reading failed"));
-        
+        reader.onerror = () => { clearInterval(progressInterval); reject(new Error("File reading failed")); };
         reader.readAsDataURL(file);
     });
+};
+
+const startEstimatedProgress = (updater: StateUpdater, estimatedDurationMs: number) => {
+    let current = 0;
+    const intervalTime = 200; 
+    const targetPercent = 95; 
+    const totalTicks = Math.max(1, estimatedDurationMs / intervalTime);
+    const incrementPerTick = targetPercent / totalTicks;
+
+    const interval = setInterval(() => {
+        current += incrementPerTick;
+        if (current > 99) current = 99;
+        updater({ stepProgress: current });
+    }, intervalTime);
+
+    return () => clearInterval(interval);
 };
 
 export class VideoPipeline {
@@ -44,113 +59,81 @@ export class VideoPipeline {
     this.updater = stateUpdater;
   }
 
-  async run(file: File, config: { targetLang: string; voiceId: string; useLipSync: boolean }) {
+  async run(file: File, config: { targetLang: string; voiceId: string; selectedSteps: string[]; mediaDuration: number }) {
     try {
-      // Initialize Job
+      const { selectedSteps, mediaDuration } = config;
+      const durationSec = mediaDuration > 0 ? mediaDuration : 30;
+
+      // 0. INITIALIZE
       this.updater({ 
-          status: 'UPLOADING', 
-          progress: 0, 
-          stepProgress: 0,
-          originalFile: file,
-          startTime: Date.now(),
-          endTime: null,
-          logs: ["شروع پردازش...", `فایل انتخاب شد: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`]
+          status: 'UPLOADING', progress: 0, stepProgress: 0, startTime: Date.now(),
+          logs: [
+              createLog("شروع پردازش سیستمی..."), 
+              createLog(`فایل شناسایی شد: ${file.name}`), 
+              createLog(`تخمین کل زمان پردازش: ~${Math.round(durationSec * 1.8)} ثانیه`) 
+          ]
       });
 
-      // 1. Upload / Read File
-      // We pass a callback to update UI during read
+      // 1. READ / UPLOAD
       const base64Data = await readFileWithProgress(file, (percent) => {
-          this.updater({ 
-              stepProgress: percent,
-              // Map upload progress to 0-15% of total progress
-              progress: (percent / 100) * 15 
-          });
+          this.updater({ stepProgress: percent, progress: (percent / 100) * 10 });
       });
-      
-      this.updater({ 
-          fileBase64: base64Data, 
-          stepProgress: 100, 
-          progress: 15,
-          logs: ["فایل با موفقیت بارگذاری شد."] 
-      });
+      this.updater({ fileBase64: base64Data, stepProgress: 100, progress: 10, logs: [createLog("فایل با موفقیت در بافر لود شد.")] });
 
-      await new Promise(r => setTimeout(r, 500)); // Transition delay
-
-      // 2. Transcribe (STT)
-      this.updater({ status: 'TRANSCRIBING', stepProgress: 0, logs: ["در حال تبدیل صدا به متن..."] });
-      const sttProvider = ProviderRegistry.getSTT();
-      
-      let stepInterval = setInterval(() => {
-          this.updater({ stepProgress: Math.min(90, Math.random() * 5 + 10) }); // Gentle fake progress
-      }, 500);
-
-      const transcript = await sttProvider.transcribe(base64Data, file.type);
-      clearInterval(stepInterval);
-      
-      this.updater({ transcript, progress: 40, stepProgress: 100, logs: ["تبدیل متن انجام شد."] });
-
-      // 3. Translate
-      this.updater({ status: 'TRANSLATING', stepProgress: 0, logs: [`در حال ترجمه به ${config.targetLang}...`] });
-      
-      stepInterval = setInterval(() => {
-          this.updater({ stepProgress: Math.min(90, Math.random() * 10 + 20) }); 
-      }, 500);
-
-      const transProvider = ProviderRegistry.getTranslation();
-      const translation = await transProvider.translate(transcript, config.targetLang);
-      clearInterval(stepInterval);
-
-      this.updater({ translation, progress: 65, stepProgress: 100, logs: ["ترجمه کامل شد."] });
-
-      // 4. Dub (TTS)
-      this.updater({ status: 'DUBBING', stepProgress: 0, logs: ["در حال تولید صدای هوشمند..."] });
-      
-      stepInterval = setInterval(() => {
-          this.updater({ stepProgress: Math.min(90, Math.random() * 10 + 30) }); 
-      }, 500);
-
-      const ttsProvider = ProviderRegistry.getTTS();
-      const dubbedAudio = await ttsProvider.synthesize(translation, config.voiceId);
-      clearInterval(stepInterval);
-
-      this.updater({ dubbedAudio, progress: 85, stepProgress: 100, logs: ["صدا تولید شد."] });
-
-      // 5. Lip Sync (Optional)
-      let finalVideo = null;
-      if (config.useLipSync) {
-        this.updater({ status: 'LIPSYNCING', stepProgress: 0, logs: ["در حال هماهنگ‌سازی لب‌ها (Lip Sync)..."] });
-        
-        stepInterval = setInterval(() => {
-             this.updater({ stepProgress: Math.min(95, Math.random() * 5 + 20) }); 
-        }, 1500);
-
-        const lipProvider = ProviderRegistry.getLipSync();
-        finalVideo = await lipProvider.sync(file, dubbedAudio.audioUrl);
-        clearInterval(stepInterval);
-        
-        this.updater({ stepProgress: 100 });
-      } else {
-        // Skip
-        finalVideo = { videoUrl: URL.createObjectURL(file) }; 
+      // 2. TRANSCRIBE (STT)
+      let transcript = null;
+      if (selectedSteps.includes('TRANSCRIBING')) {
+        this.updater({ status: 'TRANSCRIBING', stepProgress: 0, logs: [createLog("در حال تبدیل گفتار به متن (STT)...")] });
+        const estimatedTime = Math.max(5000, (durationSec * 1000) * 0.5); // 0.5x duration
+        const stopProgress = startEstimatedProgress(this.updater, estimatedTime);
+        transcript = await ProviderRegistry.getSTT().transcribe(base64Data, file.type);
+        stopProgress(); 
+        this.updater({ transcript, progress: 30, stepProgress: 100, logs: [createLog("تبدیل متن با موفقیت انجام شد.")] });
       }
 
-      // 6. Complete
+      // 3. TRANSLATE
+      let translation = null;
+      if (selectedSteps.includes('TRANSLATING') && transcript) {
+        this.updater({ status: 'TRANSLATING', stepProgress: 0, logs: [createLog(`در حال ترجمه به زبان ${config.targetLang}...`)] });
+        const estimatedTime = 3000 + (durationSec * 200); // Base 3s + 0.2x duration
+        const stopProgress = startEstimatedProgress(this.updater, estimatedTime);
+        translation = await ProviderRegistry.getTranslation().translate(transcript, config.targetLang);
+        stopProgress();
+        this.updater({ translation, progress: 50, stepProgress: 100, logs: [createLog("ترجمه محتوا تکمیل شد.")] });
+      }
+
+      // 4. DUBBING (TTS)
+      let dubbedAudio = null;
+      if (selectedSteps.includes('DUBBING') && translation) {
+        this.updater({ status: 'DUBBING', stepProgress: 0, logs: [createLog(`در حال سنتز صدای هوشمند با مدل ${config.voiceId}...`)] });
+        // Real-world TTS takes time. Use 1.2x duration to be safe.
+        const estimatedTime = Math.max(8000, (durationSec * 1000) * 1.2);
+        const stopProgress = startEstimatedProgress(this.updater, estimatedTime);
+        dubbedAudio = await ProviderRegistry.getTTS().synthesize(translation, config.voiceId);
+        stopProgress();
+        this.updater({ dubbedAudio, progress: 75, stepProgress: 100, logs: [createLog("صدای دوبله با موفقیت تولید شد.")] });
+      }
+
+      // 5. LIP SYNC
+      if (selectedSteps.includes('LIPSYNCING') && dubbedAudio) {
+        this.updater({ status: 'LIPSYNCING', stepProgress: 0, logs: [createLog("در حال هماهنگ‌سازی لب‌ها (Sync)...")] });
+        const estimatedTime = 4000; 
+        const stopProgress = startEstimatedProgress(this.updater, estimatedTime);
+        await ProviderRegistry.getLipSync().sync(file, dubbedAudio.audioUrl);
+        stopProgress();
+        this.updater({ progress: 95, stepProgress: 100, logs: [createLog("هماهنگ‌سازی لب‌ها پایان یافت.")] });
+      }
+
+      // 6. COMPLETE
       this.updater({ 
-        status: 'COMPLETED', 
-        progress: 100, 
-        stepProgress: 100,
-        finalVideo,
-        endTime: Date.now(),
-        logs: ["پایان پردازش! خروجی آماده است."]
+        status: 'COMPLETED', progress: 100, stepProgress: 100, endTime: Date.now(),
+        finalVideo: { videoUrl: URL.createObjectURL(file) },
+        logs: [createLog("عملیات با موفقیت پایان یافت. خروجی آماده نمایش است.")]
       });
 
     } catch (error: any) {
       console.error(error);
-      this.updater({ 
-          status: 'FAILED', 
-          // Keep progress where it was so user sees where it failed
-          logs: [`خطا: ${error.message || "خطای ناشناخته رخ داده است."}`]
-      });
+      this.updater({ status: 'FAILED', logs: [createLog(`خطا در پردازش: ${error.message}`)] });
     }
   }
 }

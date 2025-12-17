@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type } from "@google/genai";
+
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { 
   ISpeechToTextProvider, 
   ITranslationProvider, 
@@ -10,15 +11,14 @@ import {
   VideoResult
 } from '../types';
 
-// Initialize Gemini Client
-const apiKey = process.env.API_KEY || ''; 
-const ai = new GoogleGenAI({ apiKey });
-
-// Helper to check API Key
-const checkApiKey = () => {
+// Helper to get Gemini Client lazily
+// This ensures we pick up the API key even if it's injected late by the sandbox environment
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("خطای دسترسی: کلید API یافت نشد. لطفاً فایل env. خود را بررسی کنید.");
+    throw new Error("خطای دسترسی: کلید API یافت نشد. لطفاً از دکمه Connect API Key استفاده کنید.");
   }
+  return new GoogleGenAI({ apiKey });
 };
 
 // Helper to create silence buffer
@@ -98,13 +98,15 @@ const decodeBase64ToBytes = (base64: string): Uint8Array => {
 // --- STT Providers ---
 
 export class GeminiSTTProvider implements ISpeechToTextProvider {
-  name = "Gemini 2.5 Flash (Audio)";
+  name = "Gemini 3 Flash (Audio)";
 
   async transcribe(base64Data: string, mimeType: string, language: string = 'auto'): Promise<TranscriptResult> {
     console.log(`[${this.name}] Transcribing...`);
-    checkApiKey();
-
-    const model = 'gemini-2.5-flash';
+    
+    // Initialize lazily
+    const ai = getAIClient();
+    // Fixed: Using gemini-3-flash-preview as per guidelines for basic text and audio transcription tasks
+    const model = 'gemini-3-flash-preview';
 
     const prompt = `
       Transcribe the audio in this file accurately.
@@ -152,13 +154,14 @@ export class GeminiSTTProvider implements ISpeechToTextProvider {
           }
         });
 
+        // Fixed: response.text is a property, not a method
         if (!response.text) throw new Error("پاسخی از هوش مصنوعی دریافت نشد.");
         
         const result = JSON.parse(response.text);
         return result as TranscriptResult;
     } catch (error: any) {
         if (error.message?.includes('401') || error.message?.includes('403')) {
-            throw new Error("خطای احراز هویت: کلید API نامعتبر است.");
+            throw new Error("خطای احراز هویت (401). لطفاً دکمه قرمز 'Connect API Key' را بزنید.");
         }
         if (error.message?.includes('413')) {
              throw new Error("خطای حجم فایل: فایل ارسالی برای پردازش مستقیم بسیار حجیم است.");
@@ -171,11 +174,13 @@ export class GeminiSTTProvider implements ISpeechToTextProvider {
 // --- Translation Providers ---
 
 export class GeminiTranslationProvider implements ITranslationProvider {
-  name = "Gemini 2.5 Flash (Translation)";
+  name = "Gemini 3 Flash (Translation)";
 
   async translate(transcript: TranscriptResult, targetLang: string): Promise<TranslationResult> {
     console.log(`[${this.name}] Translating to ${targetLang}...`);
-    checkApiKey();
+    
+    // Initialize lazily
+    const ai = getAIClient();
 
     const prompt = `
       Translate the following transcript JSON to ${targetLang}.
@@ -191,7 +196,8 @@ export class GeminiTranslationProvider implements ITranslationProvider {
 
     try {
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          // Fixed: Using gemini-3-flash-preview as per guidelines for text tasks
+          model: 'gemini-3-flash-preview',
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -218,6 +224,7 @@ export class GeminiTranslationProvider implements ITranslationProvider {
           }
         });
 
+        // Fixed: response.text is a property, not a method
         if (!response.text) throw new Error("پاسخی از هوش مصنوعی دریافت نشد.");
         return JSON.parse(response.text) as TranslationResult;
     } catch (error: any) {
@@ -233,7 +240,9 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
 
   async synthesize(translation: TranslationResult, voiceId: string = 'Puck'): Promise<AudioResult> {
     console.log(`[${this.name}] Synthesizing with Sync...`);
-    checkApiKey();
+    
+    // Initialize lazily
+    const ai = getAIClient();
 
     const voiceName = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'].includes(voiceId) ? voiceId : 'Puck';
     const sampleRate = 24000; // Gemini default
@@ -258,11 +267,13 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
 
              const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                contents: {
+                // Fixed: Adjusted contents to be an array of parts according to single-speaker example
+                contents: [{
                     parts: [{ text: segment.text }]
-                },
+                }],
                 config: {
-                    responseModalities: ["AUDIO"],
+                    // Fixed: Using Modality.AUDIO from SDK and ensuring it's an array
+                    responseModalities: [Modality.AUDIO],
                     speechConfig: {
                         voiceConfig: {
                             prebuiltVoiceConfig: { voiceName: voiceName }
@@ -271,6 +282,7 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
                 }
             });
 
+            // Fixed: Safely accessing audio data from the response part
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
                 const audioBytes = decodeBase64ToBytes(base64Audio);
