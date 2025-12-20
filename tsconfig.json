@@ -15,8 +15,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-alpha"
+    "jsx": "react-jsx"
   },
   "include": ["."],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }
