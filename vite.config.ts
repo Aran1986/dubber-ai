@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // Load environment variables from the system (Vercel)
-  const env = loadEnv(mode, process.cwd(), '');
+  // Fix: Cast process to any to avoid "Property 'cwd' does not exist on type 'Process'" TypeScript error in the config environment.
+  const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
     plugins: [react()],
