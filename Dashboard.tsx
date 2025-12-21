@@ -107,7 +107,7 @@ export default function Dashboard() {
 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Sidebar */}
+        {/* Sidebar History */}
         <div className="lg:col-span-3">
            <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl h-full flex flex-col min-h-[500px]">
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-500" /> Recent Activity</h2>
@@ -130,14 +130,14 @@ export default function Dashboard() {
         {/* Workspace */}
         <div className="lg:col-span-9 space-y-6">
            
-           {/* Pipeline Header */}
+           {/* Progress Dashboard */}
            <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-2xl relative">
                 <div className="flex justify-between items-start mb-10">
                     <div>
-                        <h2 className="text-3xl font-black text-white tracking-tighter">STUDIO DASHBOARD</h2>
+                        <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Studio Pipeline</h2>
                         <div className="flex items-center gap-6 mt-2">
                           <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><MusicalNoteIcon className="w-4 h-4" /> Media Length: <span className="text-brand-400">{job.mediaDuration.toFixed(1)}s</span></div>
-                          <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><ClockIconOutline className="w-4 h-4" /> Process Time: <span className="text-white">{formatTime(elapsedTime)}</span></div>
+                          <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><ClockIconOutline className="w-4 h-4" /> Time Elapsed: <span className="text-white">{formatTime(elapsedTime)}</span></div>
                         </div>
                     </div>
                     <div className="text-right">
@@ -146,7 +146,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Main Progress (100% Opacity) */}
+                {/* Main Progress Bar */}
                 <div className="mb-14">
                     <div className="w-full h-5 bg-slate-900 rounded-full p-1 border border-slate-800 shadow-inner">
                         <div className="h-full bg-gradient-to-r from-brand-600 to-indigo-600 rounded-full transition-all duration-1000 relative" style={{ width: `${job.progress}%` }}>
@@ -157,8 +157,9 @@ export default function Dashboard() {
 
                 {/* Metro Steps (With Base Line) */}
                 <div className="relative mb-14 px-8">
-                   {/* Permanent Connector Line */}
-                   <div className="absolute top-7 left-14 right-14 h-[3px] bg-slate-800 rounded-full -z-0 shadow-inner"></div>
+                   {/* WHITE Permanent Connector Line (Requested Fix) */}
+                   <div className="absolute top-7 left-14 right-14 h-[3px] bg-white/20 rounded-full -z-0 shadow-inner"></div>
+                   
                    {/* Active Progress Line */}
                    <div className="absolute top-7 left-14 h-[3px] bg-brand-500 transition-all duration-1000 -z-0 shadow-[0_0_10px_rgba(14,165,233,0.5)]" style={{ width: `${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}%` }}></div>
 
@@ -169,9 +170,9 @@ export default function Dashboard() {
                             disabled={s.mandatory || job.status !== 'IDLE'} 
                             onClick={() => handleStepClick(s.id)}
                             className={`w-14 h-14 rounded-full flex items-center justify-center border-[4px] bg-dark-surface transition-all duration-500 relative
-                                ${isActive(idx) ? 'border-brand-500 scale-125 shadow-2xl text-brand-500' : 
-                                  isDone(idx) ? 'border-brand-500 bg-brand-500 text-white shadow-brand-500/20' : 
-                                  isStepSelected(s.id) ? 'border-slate-600 text-slate-400' : 'border-slate-800 text-slate-700'}
+                                ${isActive(idx) ? 'border-brand-500 scale-125 shadow-2xl text-brand-500 opacity-100' : 
+                                  isDone(idx) ? 'border-brand-500 bg-brand-500 text-white shadow-brand-500/20 opacity-100' : 
+                                  isStepSelected(s.id) ? 'border-slate-500 text-slate-400 opacity-80' : 'border-slate-800 text-slate-700 opacity-60'}
                             `}
                           >
                             <s.icon className="w-6 h-6" />
@@ -205,7 +206,7 @@ export default function Dashboard() {
                       <button 
                         onClick={() => { if(job.originalFile) { pipelineRef.current = new VideoPipeline(updateJobState); pipelineRef.current.run(job.originalFile, { targetLang: job.targetLang, voiceId: job.selectedVoice?.id || 'Puck', selectedSteps: job.selectedSteps, mediaDuration: job.mediaDuration }); } }} 
                         disabled={!job.originalFile || job.status !== 'IDLE'} 
-                        className="w-full bg-brand-600 hover:bg-brand-500 text-white font-black py-5 rounded-2xl shadow-2xl transition active:scale-[0.97] disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-4 text-xl tracking-tighter"
+                        className="w-full bg-brand-600 hover:bg-brand-500 text-white font-black py-5 rounded-2xl shadow-2xl transition active:scale-[0.97] disabled:opacity-30 flex items-center justify-center gap-4 text-xl tracking-tighter"
                       >
                         <PlayIcon className="w-7 h-7" /> INITIATE DEPLOYMENT
                       </button>
@@ -225,12 +226,12 @@ export default function Dashboard() {
                           <span className="text-slate-400 leading-relaxed">{log.message}</span>
                         </div>
                       ))}
-                      {job.logs.length === 0 && <div className="text-slate-800 italic">No telemetry data...</div>}
+                      {job.logs.length === 0 && <div className="text-slate-800 italic">Waiting for process initiation...</div>}
                   </div>
                 </div>
            </div>
 
-           {/* Results: Script Paragraph View */}
+           {/* Results: Paragraph View with Timestamps */}
            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 {job.transcript && (
                     <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-xl">
@@ -238,13 +239,14 @@ export default function Dashboard() {
                           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><DocumentTextIcon className="w-5 h-5 text-brand-500" /> Source Narrative</h3>
                           <span className="text-[10px] bg-slate-800 text-slate-500 px-3 py-1 rounded-lg font-black">ORIGINAL</span>
                         </div>
-                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-6" dir="auto">
+                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-8" dir="auto">
                             {job.transcript.segments.map((s, i) => (
-                                <div key={i} className="relative pl-6 border-l border-slate-700/50 group">
-                                    <div className="absolute left-[-1px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
+                                <div key={i} className="relative pl-6 border-l-2 border-slate-700/50 group transition-all">
+                                    <div className="absolute left-[-2px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
                                     <div className="flex items-center gap-3 mb-2">
-                                      <span className="text-[10px] font-black text-brand-500 uppercase tracking-tighter">Speaker {s.speaker || '1'}</span>
-                                      <span className="text-[9px] text-slate-600 font-mono">[{s.start.toFixed(1)}s → {s.end.toFixed(1)}s]</span>
+                                      <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+                                      <span className="text-[10px] font-black text-brand-500 uppercase tracking-widest">Speaker {s.speaker || '1'}</span>
+                                      <span className="text-[9px] text-slate-600 font-mono px-2 py-0.5 bg-slate-800/50 rounded">{s.start.toFixed(1)}s → {s.end.toFixed(1)}s</span>
                                     </div>
                                     <p className="text-sm text-slate-300 leading-relaxed tracking-tight">{s.text}</p>
                                 </div>
@@ -258,15 +260,16 @@ export default function Dashboard() {
                           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><LanguageIcon className="w-5 h-5 text-brand-500" /> Translated Output</h3>
                           <span className="text-[10px] bg-brand-500/20 text-brand-400 px-3 py-1 rounded-lg font-black uppercase">{job.targetLang}</span>
                         </div>
-                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-6" dir="auto">
+                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-8" dir="auto">
                             {job.translation.segments.map((s, i) => (
-                                <div key={i} className="relative pl-6 border-l border-brand-500/20 group">
-                                    <div className="absolute left-[-1px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
+                                <div key={i} className="relative pl-6 border-l-2 border-brand-500/20 group transition-all">
+                                    <div className="absolute left-[-2px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
                                     <div className="flex items-center gap-3 mb-2">
-                                      <span className="text-[10px] font-black text-brand-400 uppercase tracking-tighter">Speaker {s.speaker || '1'}</span>
-                                      <span className="text-[9px] text-slate-600 font-mono">[{s.start.toFixed(1)}s → {s.end.toFixed(1)}s]</span>
+                                      <div className="w-2 h-2 rounded-full bg-brand-500/40"></div>
+                                      <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest">Speaker {s.speaker || '1'}</span>
+                                      <span className="text-[9px] text-slate-600 font-mono px-2 py-0.5 bg-slate-800/50 rounded">{s.start.toFixed(1)}s → {s.end.toFixed(1)}s</span>
                                     </div>
-                                    <p className="text-sm text-white leading-relaxed tracking-tight">{s.text}</p>
+                                    <p className="text-sm text-white leading-relaxed tracking-tight font-medium">{s.text}</p>
                                 </div>
                             ))}
                         </div>
@@ -296,20 +299,20 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {/* Isolated Audio Track (RESTORED) */}
+                    {/* Isolated Audio Track */}
                     {job.dubbedAudio && (
                       <div className="bg-dark-bg/60 p-8 rounded-[2rem] border border-slate-800 shadow-inner group">
                         <div className="flex items-center justify-between mb-6">
                            <div className="flex items-center gap-3">
                              <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500"><SpeakerWaveIcon className="w-5 h-5" /></div>
-                             <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Isolated Dubbed Audio</h4>
+                             <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Isolated Dubbed Track</h4>
                            </div>
                            <a href={job.dubbedAudio.audioUrl} download={`dub_audio_${job.id}.wav`} className="text-brand-400 hover:text-brand-300 text-[10px] font-black flex items-center gap-2 transition-all">
                               <ArrowDownTrayIcon className="w-4 h-4" /> EXPORT WAV
                            </a>
                         </div>
                         <audio src={job.dubbedAudio.audioUrl} className="w-full h-12" controls />
-                        <p className="text-[9px] text-slate-600 mt-4 italic">Note: This is the high-fidelity synthesized track before mixing.</p>
+                        <p className="text-[9px] text-slate-600 mt-4 italic">Standalone synthesized audio before final muxing.</p>
                       </div>
                     )}
                 </div>

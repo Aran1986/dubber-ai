@@ -1,70 +1,78 @@
 
 export class MuxerService {
   /**
-   * Real Muxing logic with proper AudioContext lifecycle management.
-   * Fixes the 'already connected' error by using unique elements and cleanup.
+   * High-reliability Muxing: Combines video and audio by decoding audio into a buffer.
+   * This bypasses the 'already connected' MediaElementSourceNode error.
    */
   static async combine(videoUrl: string, audioUrl: string): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      // Create entirely new, detached elements for muxing
-      const v = document.createElement('video');
-      const a = document.createElement('audio');
-      
-      v.src = videoUrl;
-      a.src = audioUrl;
-      v.muted = true;
-      v.crossOrigin = "anonymous";
-      a.crossOrigin = "anonymous";
+    return new Promise(async (resolve, reject) => {
+      try {
+        const v = document.createElement('video');
+        v.src = videoUrl;
+        v.muted = true;
+        v.crossOrigin = "anonymous";
+        v.playsInline = true;
 
-      const onReady = () => {
-        if (v.readyState < 3 || a.readyState < 3) return;
+        // Fetch and decode audio to avoid MediaElementSource connection issues
+        const audioResponse = await fetch(audioUrl);
+        const audioData = await audioResponse.arrayBuffer();
+        
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioBuffer = await ctx.decodeAudioData(audioData);
+        
+        const onReady = () => {
+          if (v.readyState < 3) return;
 
-        try {
-          // Capture stream from video
-          const vStream = (v as any).captureStream ? (v as any).captureStream() : (v as any).mozCaptureStream();
-          
-          // Create a fresh AudioContext for this specific muxing task
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const dest = ctx.createMediaStreamDestination();
-          
-          // Connect the fresh audio element to the destination
-          const source = ctx.createMediaElementSource(a);
-          source.connect(dest);
+          try {
+            const vStream = (v as any).captureStream ? (v as any).captureStream() : (v as any).mozCaptureStream();
+            const dest = ctx.createMediaStreamDestination();
+            
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(dest);
 
-          const combinedStream = new MediaStream([
-            ...vStream.getVideoTracks(),
-            ...dest.stream.getAudioTracks()
-          ]);
+            const combinedStream = new MediaStream([
+              ...vStream.getVideoTracks(),
+              ...dest.stream.getAudioTracks()
+            ]);
 
-          const recorder = new MediaRecorder(combinedStream, { 
-            mimeType: MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm' 
-          });
+            const recorder = new MediaRecorder(combinedStream, { 
+              mimeType: MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm' 
+            });
 
-          const chunks: Blob[] = [];
-          recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: recorder.mimeType });
-            ctx.close();
-            resolve(blob);
-          };
+            const chunks: Blob[] = [];
+            recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
+            
+            recorder.onstop = () => {
+              const blob = new Blob(chunks, { type: recorder.mimeType });
+              ctx.close();
+              resolve(blob);
+            };
 
-          v.play();
-          a.play();
-          recorder.start();
+            v.play();
+            source.start(0);
+            recorder.start();
 
-          v.onended = () => {
-            recorder.stop();
-            a.pause();
-          };
-        } catch (err) {
-          reject(err);
-        }
-      };
+            v.onended = () => {
+              recorder.stop();
+              source.stop();
+            };
+          } catch (err) {
+            reject(err);
+          }
+        };
 
-      v.oncanplaythrough = onReady;
-      a.oncanplaythrough = onReady;
-      v.onerror = () => reject(new Error("Video failed to load for muxing"));
-      a.onerror = () => reject(new Error("Audio failed to load for muxing"));
+        v.oncanplaythrough = onReady;
+        v.onerror = () => reject(new Error("Video failed to load for muxing"));
+        
+        // Safety timeout for video loading
+        setTimeout(() => {
+          if (v.readyState < 3) reject(new Error("Muxing video load timeout"));
+        }, 15000);
+
+      } catch (err) {
+        reject(err);
+      }
     });
   }
 }
