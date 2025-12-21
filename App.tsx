@@ -9,7 +9,7 @@ import ProfilePage from './ProfilePage';
 import Marketplace from './Marketplace';
 import { AuthService } from './services/auth';
 import { User } from './types';
-import { ArrowRightOnRectangleIcon, UserCircleIcon, KeyIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { ArrowRightOnRectangleIcon, UserCircleIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 
 type Page = 'landing' | 'pricing' | 'dashboard' | 'login' | 'signup' | 'profile' | 'marketplace';
 
@@ -25,14 +25,6 @@ export default function App() {
   const navigate = (page: string) => {
     setCurrentPage(page as Page);
     window.scrollTo(0, 0);
-  };
-
-  const handleConnectKey = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-    } else {
-      alert("AI Studio environment not detected.");
-    }
   };
 
   const handleLogout = () => {
@@ -59,13 +51,6 @@ export default function App() {
                </button>
                {user && <button onClick={() => navigate('dashboard')} className={currentPage === 'dashboard' ? 'text-brand-400 font-bold' : 'hover:text-white transition'}>Studio</button>}
              </nav>
-             
-             <button 
-                onClick={handleConnectKey}
-                className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-all animate-pulse"
-             >
-                <KeyIcon className="w-4 h-4" /> Connect API Key
-             </button>
 
              {!user ? (
                 <div className="flex gap-3">

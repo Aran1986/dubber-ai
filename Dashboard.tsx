@@ -9,7 +9,8 @@ import {
   CheckCircleIcon, ExclamationCircleIcon, PlayCircleIcon, 
   ArrowDownTrayIcon, PlayIcon, MagnifyingGlassIcon, 
   MusicalNoteIcon, AdjustmentsHorizontalIcon, SpeakerWaveIcon,
-  ChevronDownIcon, XMarkIcon, SparklesIcon, ClockIcon, TrashIcon
+  ChevronDownIcon, XMarkIcon, SparklesIcon, ClockIcon, TrashIcon,
+  DocumentTextIcon, ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
 
 const LANGUAGES: Language[] = [
@@ -97,7 +98,6 @@ export default function Dashboard() {
       if (update.logs && Array.isArray(update.logs)) newState.logs = [...prev.logs, ...update.logs];
       return newState;
     });
-    // Refresh history sidebar when status changes
     if (update.status === 'COMPLETED' || update.status === 'FAILED') loadHistory();
   }, []);
 
@@ -113,8 +113,7 @@ export default function Dashboard() {
         if (!newSelected.includes('COMPLETED')) newSelected.push('COMPLETED');
     } else {
         const stepIndex = STEPS.findIndex(s => s.id === stepId);
-        const stepsToAdd = STEPS.slice(0, stepIndex + 1).map(s => s.id);
-        stepsToAdd.forEach(id => { if (!newSelected.includes(id)) newSelected.push(id); });
+        const stepsToAdd = STEPS.slice(0, stepIndex + 1).map(s => id => { if (!newSelected.includes(id)) newSelected.push(id); });
         if (!newSelected.includes('COMPLETED')) newSelected.push('COMPLETED');
     }
     setJob(prev => ({ ...prev, selectedSteps: newSelected }));
@@ -198,7 +197,7 @@ export default function Dashboard() {
 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Sidebar: History & Projects */}
+        {/* Sidebar: History */}
         <div className="lg:col-span-3 space-y-6">
            <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl h-full flex flex-col min-h-[400px]">
               <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
@@ -314,20 +313,6 @@ export default function Dashboard() {
                <div className="flex justify-between w-full px-0 mt-[-10px]">
                   {STEPS.map((s, idx) => ( <span key={s.id} className={`text-[8px] font-black uppercase tracking-tighter text-center w-12 ${isActive(idx) ? 'text-brand-400' : isStepSelected(s.id) ? 'text-slate-500' : 'text-slate-800'}`}>{s.label}</span> ))}
                </div>
-               <div className="flex items-center w-full px-2">
-                  {STEPS.map((s, idx) => {
-                    const isProcessing = job.status !== 'IDLE' && job.status !== 'COMPLETED';
-                    const isLast = idx === STEPS.length - 1;
-                    return (
-                        <React.Fragment key={`prog-${s.id}`}>
-                            <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center border-2 bg-dark-bg text-[8px] font-black transition-all z-10 ${isActive(idx) ? 'border-brand-500 text-brand-400 ring-2 ring-brand-500/10' : isDone(idx) ? 'border-slate-800 text-slate-600' : 'border-slate-900 text-slate-800 opacity-40'} ${isLast && isProcessing ? 'animate-pulse text-brand-400 border-brand-500' : ''}`}>
-                                {isStepSelected(s.id) ? (isLast ? ((elapsedTime > 0 || isProcessing) ? `${Math.floor(elapsedTime / 1000)}s` : '0s') : (isDone(idx) ? '100%' : (isActive(idx) ? `${Math.floor(job.stepProgress)}%` : '0%'))) : '--'}
-                            </div>
-                            {idx < STEPS.length - 1 && ( <div className={`flex-1 h-1 transition-colors duration-500 ${isDone(idx) ? 'bg-slate-800' : 'bg-slate-900'}`}></div> )}
-                        </React.Fragment>
-                    );
-                  })}
-               </div>
             </div>
 
             <button onClick={() => {
@@ -356,16 +341,43 @@ export default function Dashboard() {
             </div>
           </div>
           
+          {/* Results Sections: Transcript & Translation */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {job.transcript && (
+                <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl animate-in fade-in duration-500">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                        <DocumentTextIcon className="w-4 h-4 text-brand-500" /> Original Transcript
+                    </h3>
+                    <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border h-48 overflow-y-auto text-xs leading-relaxed custom-scrollbar" dir="auto">
+                        {job.transcript.fullText}
+                    </div>
+                </div>
+            )}
+            {job.translation && (
+                <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl animate-in fade-in duration-500">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                        <ChatBubbleBottomCenterTextIcon className="w-4 h-4 text-brand-500" /> Translated Text
+                    </h3>
+                    <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border h-48 overflow-y-auto text-xs leading-relaxed custom-scrollbar text-brand-400" dir="auto">
+                        {job.translation.translatedText}
+                    </div>
+                </div>
+            )}
+          </div>
+
           {(job.dubbedAudio || job.finalVideo) && (
              <div className="bg-gradient-to-br from-brand-900/20 to-indigo-900/20 border border-brand-500/20 rounded-3xl p-8 animate-in slide-in-from-bottom-5 duration-700 shadow-2xl">
                 <div className="flex flex-col xl:flex-row gap-6">
                     {job.finalVideo && (
-                        <div className="flex-1 aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl"><video src={job.finalVideo.videoUrl} className="w-full h-full" controls /></div>
+                        <div className="flex-1 aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
+                            <video src={job.finalVideo.videoUrl} className="w-full h-full" controls />
+                            <div className="absolute top-4 right-4 bg-brand-500 text-white text-[8px] font-black px-2 py-1 rounded">FINAL RENDER</div>
+                        </div>
                     )}
                     {job.dubbedAudio && (
                         <div className="flex-1 flex flex-col justify-center space-y-4">
                             <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border shadow-inner">
-                                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Master Audio</p>
+                                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Dubbed Audio Track</p>
                                 <audio src={job.dubbedAudio.audioUrl} controls className="w-full h-10" />
                             </div>
                             <button className="flex items-center justify-center gap-3 bg-white text-brand-900 font-black py-4 rounded-xl hover:bg-slate-200 transition-all shadow-xl active:scale-95 text-sm uppercase"><ArrowDownTrayIcon className="w-5 h-5" /> Export Result</button>
