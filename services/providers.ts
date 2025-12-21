@@ -12,11 +12,10 @@ import {
 } from '../types';
 
 // Helper to get Gemini Client lazily
-// This ensures we pick up the API key even if it's injected late by the sandbox environment
 const getAIClient = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("خطای دسترسی: کلید API یافت نشد. لطفاً از دکمه Connect API Key استفاده کنید.");
+    throw new Error("خطای دسترسی: کلید API یافت نشد. لطفاً در تنظیمات ورسل متغیر API_KEY را ست کنید.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -24,9 +23,7 @@ const getAIClient = () => {
 // Helper to create silence buffer
 const createSilence = (durationSec: number, sampleRate: number): Uint8Array => {
     const numSamples = Math.floor(durationSec * sampleRate);
-    // 16-bit PCM = 2 bytes per sample
     const buffer = new Uint8Array(numSamples * 2); 
-    // Default is 0 (silence)
     return buffer;
 };
 
@@ -42,7 +39,7 @@ const concatenateBuffers = (buffers: Uint8Array[]): Uint8Array => {
     return result;
 };
 
-// Helper to add WAV header to Raw PCM data
+// Helper to add WAV header
 const addWavHeader = (pcmData: Uint8Array, sampleRate: number = 24000, numChannels: number = 1): Blob => {
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
@@ -52,22 +49,17 @@ const addWavHeader = (pcmData: Uint8Array, sampleRate: number = 24000, numChanne
   const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
   const blockAlign = (numChannels * bitsPerSample) / 8;
 
-  // RIFF chunk descriptor
   writeString(view, 0, 'RIFF');
   view.setUint32(4, fileSize, true);
   writeString(view, 8, 'WAVE');
-
-  // fmt sub-chunk
   writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
-  view.setUint16(22, numChannels, true); // NumChannels
-  view.setUint32(24, sampleRate, true); // SampleRate
-  view.setUint32(28, byteRate, true); // ByteRate
-  view.setUint16(32, blockAlign, true); // BlockAlign
-  view.setUint16(34, bitsPerSample, true); // BitsPerSample
-
-  // data sub-chunk
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
   writeString(view, 36, 'data');
   view.setUint32(40, totalDataLen, true);
 
@@ -80,7 +72,6 @@ const writeString = (view: DataView, offset: number, string: string) => {
   }
 };
 
-// Decode Base64 to Uint8Array
 const decodeBase64ToBytes = (base64: string): Uint8Array => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -91,26 +82,22 @@ const decodeBase64ToBytes = (base64: string): Uint8Array => {
     return bytes;
 };
 
-// ============================================================================
-// REAL PROVIDERS (Gemini Powered)
-// ============================================================================
-
 // --- STT Providers ---
 
 export class GeminiSTTProvider implements ISpeechToTextProvider {
-  name = "Gemini 3 Flash (Audio)";
+  name = "Gemini 3 Flash (STT)";
 
   async transcribe(base64Data: string, mimeType: string, language: string = 'auto'): Promise<TranscriptResult> {
     console.log(`[${this.name}] Transcribing...`);
-    
-    // Initialize lazily
     const ai = getAIClient();
-    // Fixed: Using gemini-3-flash-preview as per guidelines for basic text and audio transcription tasks
     const model = 'gemini-3-flash-preview';
 
     const prompt = `
-      Transcribe the audio in this file accurately.
-      Identify the main language.
+      Precisely transcribe the audio in this file. 
+      Split the transcription into segments representing individual sentences or logical phrases.
+      For each segment, provide exact start and end timestamps in seconds.
+      Identify different speakers if possible (e.g., "Speaker 1", "Speaker 2").
+      
       Return the result strictly as a JSON object with this schema:
       {
         "language": "en" | "fa" | "es" etc,
@@ -154,18 +141,9 @@ export class GeminiSTTProvider implements ISpeechToTextProvider {
           }
         });
 
-        // Fixed: response.text is a property, not a method
-        if (!response.text) throw new Error("پاسخی از هوش مصنوعی دریافت نشد.");
-        
-        const result = JSON.parse(response.text);
-        return result as TranscriptResult;
+        if (!response.text) throw new Error("No response from Gemini.");
+        return JSON.parse(response.text) as TranscriptResult;
     } catch (error: any) {
-        if (error.message?.includes('401') || error.message?.includes('403')) {
-            throw new Error("خطای احراز هویت (401). لطفاً دکمه قرمز 'Connect API Key' را بزنید.");
-        }
-        if (error.message?.includes('413')) {
-             throw new Error("خطای حجم فایل: فایل ارسالی برای پردازش مستقیم بسیار حجیم است.");
-        }
         throw error;
     }
   }
@@ -178,25 +156,21 @@ export class GeminiTranslationProvider implements ITranslationProvider {
 
   async translate(transcript: TranscriptResult, targetLang: string): Promise<TranslationResult> {
     console.log(`[${this.name}] Translating to ${targetLang}...`);
-    
-    // Initialize lazily
     const ai = getAIClient();
 
     const prompt = `
       Translate the following transcript JSON to ${targetLang}.
-      Maintain the "start", "end", and "speaker" fields exactly as they are.
-      Only translate the "text" fields.
-      Also provide the full translated text.
+      CRITICAL: You MUST preserve the "start", "end", and "speaker" fields EXACTLY for every segment.
+      Only translate the content within the "text" property.
       
       Input JSON:
       ${JSON.stringify(transcript)}
       
-      Return JSON format matching the input structure but with translated content.
+      Return valid JSON matching the structure above.
     `;
 
     try {
         const response = await ai.models.generateContent({
-          // Fixed: Using gemini-3-flash-preview as per guidelines for text tasks
           model: 'gemini-3-flash-preview',
           contents: prompt,
           config: {
@@ -224,11 +198,10 @@ export class GeminiTranslationProvider implements ITranslationProvider {
           }
         });
 
-        // Fixed: response.text is a property, not a method
-        if (!response.text) throw new Error("پاسخی از هوش مصنوعی دریافت نشد.");
+        if (!response.text) throw new Error("No response from Gemini.");
         return JSON.parse(response.text) as TranslationResult;
     } catch (error: any) {
-        throw new Error("خطا در سرویس ترجمه: " + error.message);
+        throw new Error("Translation error: " + error.message);
     }
   }
 }
@@ -239,40 +212,26 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
   name = "Gemini 2.5 Flash TTS";
 
   async synthesize(translation: TranslationResult, voiceId: string = 'Puck'): Promise<AudioResult> {
-    console.log(`[${this.name}] Synthesizing with Sync...`);
-    
-    // Initialize lazily
+    console.log(`[${this.name}] Synthesizing Dubbed Track...`);
     const ai = getAIClient();
-
     const voiceName = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'].includes(voiceId) ? voiceId : 'Puck';
-    const sampleRate = 24000; // Gemini default
+    const sampleRate = 24000;
 
     const audioBuffers: Uint8Array[] = [];
     let currentTimeCursor = 0;
 
-    // Iterate through segments to maintain timing
     for (const segment of translation.segments) {
-        // 1. Calculate Silence needed before this segment
         const gap = segment.start - currentTimeCursor;
         if (gap > 0) {
-            console.log(`Adding silence: ${gap.toFixed(2)}s`);
             audioBuffers.push(createSilence(gap, sampleRate));
             currentTimeCursor += gap;
         }
 
-        // 2. Generate Audio for Segment
         try {
-             // Add a tiny delay to avoid rate limits
-             await new Promise(r => setTimeout(r, 100));
-
              const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                // Fixed: Adjusted contents to be an array of parts according to single-speaker example
-                contents: [{
-                    parts: [{ text: segment.text }]
-                }],
+                contents: [{ parts: [{ text: segment.text }] }],
                 config: {
-                    // Fixed: Using Modality.AUDIO from SDK and ensuring it's an array
                     responseModalities: [Modality.AUDIO],
                     speechConfig: {
                         voiceConfig: {
@@ -282,27 +241,20 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
                 }
             });
 
-            // Fixed: Safely accessing audio data from the response part
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
                 const audioBytes = decodeBase64ToBytes(base64Audio);
                 audioBuffers.push(audioBytes);
-                
-                // Update cursor based on generated audio length
-                // 2 bytes per sample (16-bit)
                 const duration = (audioBytes.length / 2) / sampleRate;
                 currentTimeCursor += duration;
             }
-
         } catch (e) {
-            console.warn(`Failed to synthesize segment: ${segment.text}`, e);
-            // If failed, just treat it as silence time
+            console.warn(`Failed to synthesize segment`, e);
         }
     }
 
-    if (audioBuffers.length === 0) throw new Error("داده صوتی تولید نشد.");
+    if (audioBuffers.length === 0) throw new Error("No audio generated.");
 
-    // Stitch all buffers
     const finalPCM = concatenateBuffers(audioBuffers);
     const wavBlob = addWavHeader(finalPCM, sampleRate, 1);
     const url = URL.createObjectURL(wavBlob);
@@ -318,34 +270,14 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
 
 export class MockWav2LipProvider implements ILipSyncProvider {
   name = "Wav2Lip (Mock)";
-
   async sync(videoFile: File, audioUrl: string): Promise<VideoResult> {
-    console.log(`[${this.name}] Syncing lips...`);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    return {
-      videoUrl: URL.createObjectURL(videoFile)
-    };
+    return { videoUrl: URL.createObjectURL(videoFile) };
   }
 }
 
-// ============================================================================
-// 2. PROVIDER REGISTRY
-// ============================================================================
-
 export const ProviderRegistry = {
-  getSTT(): ISpeechToTextProvider {
-    return new GeminiSTTProvider();
-  },
-
-  getTranslation(): ITranslationProvider {
-    return new GeminiTranslationProvider();
-  },
-
-  getTTS(): ITextToSpeechProvider {
-    return new GeminiTTSProvider();
-  },
-
-  getLipSync(): ILipSyncProvider {
-    return new MockWav2LipProvider();
-  }
+  getSTT(): ISpeechToTextProvider { return new GeminiSTTProvider(); },
+  getTranslation(): ITranslationProvider { return new GeminiTranslationProvider(); },
+  getTTS(): ITextToSpeechProvider { return new GeminiTTSProvider(); },
+  getLipSync(): ILipSyncProvider { return new MockWav2LipProvider(); }
 };

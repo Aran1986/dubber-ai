@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { JobState, Voice, VoiceCategory, LogEntry, Language } from './types';
+import { JobState, Voice, VoiceCategory, LogEntry, Language, Segment } from './types';
 import { VideoPipeline } from './services/pipeline';
 import { ProviderRegistry } from './services/providers';
 import { DBService } from './services/db';
@@ -10,7 +10,8 @@ import {
   ArrowDownTrayIcon, PlayIcon, MagnifyingGlassIcon, 
   MusicalNoteIcon, AdjustmentsHorizontalIcon, SpeakerWaveIcon,
   ChevronDownIcon, XMarkIcon, SparklesIcon, ClockIcon, TrashIcon,
-  DocumentTextIcon, ChatBubbleBottomCenterTextIcon
+  DocumentTextIcon, ChatBubbleBottomCenterTextIcon,
+  ClockIcon as ClockIconOutline
 } from '@heroicons/react/24/outline';
 
 const LANGUAGES: Language[] = [
@@ -55,6 +56,8 @@ export default function Dashboard() {
   
   const pipelineRef = useRef<VideoPipeline | null>(null);
   const durationRef = useRef<HTMLAudioElement>(null);
+  const videoPlayerRef = useRef<HTMLVideoElement>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     loadHistory();
@@ -113,7 +116,7 @@ export default function Dashboard() {
         if (!newSelected.includes('COMPLETED')) newSelected.push('COMPLETED');
     } else {
         const stepIndex = STEPS.findIndex(s => s.id === stepId);
-        const stepsToAdd = STEPS.slice(0, stepIndex + 1).map(s => id => { if (!newSelected.includes(id)) newSelected.push(id); });
+        const stepsToAdd = STEPS.slice(0, stepIndex + 1).map(id => { if (!newSelected.includes(id)) newSelected.push(id); });
         if (!newSelected.includes('COMPLETED')) newSelected.push('COMPLETED');
     }
     setJob(prev => ({ ...prev, selectedSteps: newSelected }));
@@ -137,6 +140,29 @@ export default function Dashboard() {
     } catch (e) {
         alert("Preview error.");
         setIsPreviewing(false);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Synchronized Playback Logic
+  const handlePlayFinal = () => {
+    if (videoPlayerRef.current && audioPlayerRef.current) {
+        videoPlayerRef.current.currentTime = 0;
+        audioPlayerRef.current.currentTime = 0;
+        videoPlayerRef.current.play();
+        audioPlayerRef.current.play();
+    }
+  };
+
+  const handlePauseFinal = () => {
+    if (videoPlayerRef.current && audioPlayerRef.current) {
+        videoPlayerRef.current.pause();
+        audioPlayerRef.current.pause();
     }
   };
 
@@ -342,24 +368,42 @@ export default function Dashboard() {
           </div>
           
           {/* Results Sections: Transcript & Translation */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {job.transcript && (
                 <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl animate-in fade-in duration-500">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
-                        <DocumentTextIcon className="w-4 h-4 text-brand-500" /> Original Transcript
+                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2"><DocumentTextIcon className="w-4 h-4 text-brand-500" /> Original Segments</div>
+                        <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-500">{job.transcript.language.toUpperCase()}</span>
                     </h3>
-                    <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border h-48 overflow-y-auto text-xs leading-relaxed custom-scrollbar" dir="auto">
-                        {job.transcript.fullText}
+                    <div className="bg-dark-bg/60 rounded-xl border border-dark-border h-64 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                        {job.transcript.segments.map((s, i) => (
+                            <div key={i} className="p-3 bg-slate-800/40 rounded-lg border border-slate-700/50 hover:border-brand-500/30 transition-all group">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[9px] font-bold text-brand-400 uppercase tracking-widest">{s.speaker || 'Voice'}</span>
+                                    <span className="text-[9px] text-slate-500 flex items-center gap-1"><ClockIconOutline className="w-3 h-3" /> {formatTime(s.start)} - {formatTime(s.end)}</span>
+                                </div>
+                                <p className="text-xs text-slate-300 leading-relaxed" dir="auto">{s.text}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
             {job.translation && (
                 <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl animate-in fade-in duration-500">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
-                        <ChatBubbleBottomCenterTextIcon className="w-4 h-4 text-brand-500" /> Translated Text
+                    <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2"><ChatBubbleBottomCenterTextIcon className="w-4 h-4 text-brand-500" /> Translated Segments</div>
+                        <span className="text-[10px] bg-brand-500/20 px-2 py-1 rounded text-brand-400">{job.targetLang.toUpperCase()}</span>
                     </h3>
-                    <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border h-48 overflow-y-auto text-xs leading-relaxed custom-scrollbar text-brand-400" dir="auto">
-                        {job.translation.translatedText}
+                    <div className="bg-dark-bg/60 rounded-xl border border-dark-border h-64 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                        {job.translation.segments.map((s, i) => (
+                            <div key={i} className="p-3 bg-brand-500/5 rounded-lg border border-brand-500/10 hover:border-brand-500/40 transition-all">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[9px] font-bold text-brand-400 uppercase tracking-widest">{s.speaker || 'Voice'}</span>
+                                    <span className="text-[9px] text-slate-500 flex items-center gap-1"><ClockIconOutline className="w-3 h-3" /> {formatTime(s.start)} - {formatTime(s.end)}</span>
+                                </div>
+                                <p className="text-xs text-white leading-relaxed" dir="auto">{s.text}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -367,22 +411,52 @@ export default function Dashboard() {
 
           {(job.dubbedAudio || job.finalVideo) && (
              <div className="bg-gradient-to-br from-brand-900/20 to-indigo-900/20 border border-brand-500/20 rounded-3xl p-8 animate-in slide-in-from-bottom-5 duration-700 shadow-2xl">
-                <div className="flex flex-col xl:flex-row gap-6">
+                <div className="flex flex-col xl:flex-row gap-8 items-center">
                     {job.finalVideo && (
-                        <div className="flex-1 aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
-                            <video src={job.finalVideo.videoUrl} className="w-full h-full" controls />
-                            <div className="absolute top-4 right-4 bg-brand-500 text-white text-[8px] font-black px-2 py-1 rounded">FINAL RENDER</div>
+                        <div className="flex-1 w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-white/5">
+                            <video 
+                                ref={videoPlayerRef}
+                                src={job.finalVideo.videoUrl} 
+                                className="w-full h-full" 
+                                muted={!!job.dubbedAudio}
+                                onPlay={handlePlayFinal}
+                                onPause={handlePauseFinal}
+                                controls 
+                            />
+                            {job.dubbedAudio && (
+                                <div className="absolute top-4 right-4 bg-brand-500 text-white text-[8px] font-black px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></div>
+                                    SYNCED AUDIO ACTIVE
+                                </div>
+                            )}
                         </div>
                     )}
-                    {job.dubbedAudio && (
-                        <div className="flex-1 flex flex-col justify-center space-y-4">
-                            <div className="bg-dark-bg/60 p-4 rounded-xl border border-dark-border shadow-inner">
-                                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Dubbed Audio Track</p>
-                                <audio src={job.dubbedAudio.audioUrl} controls className="w-full h-10" />
-                            </div>
-                            <button className="flex items-center justify-center gap-3 bg-white text-brand-900 font-black py-4 rounded-xl hover:bg-slate-200 transition-all shadow-xl active:scale-95 text-sm uppercase"><ArrowDownTrayIcon className="w-5 h-5" /> Export Result</button>
+                    
+                    <div className="w-full xl:w-80 flex flex-col justify-center space-y-4">
+                        <div className="bg-dark-bg/60 p-5 rounded-2xl border border-dark-border shadow-inner">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <SpeakerWaveIcon className="w-4 h-4 text-brand-500" /> Dubbed Audio Track
+                            </p>
+                            {job.dubbedAudio ? (
+                                <audio 
+                                    ref={audioPlayerRef}
+                                    src={job.dubbedAudio.audioUrl} 
+                                    controls 
+                                    className="w-full h-10" 
+                                />
+                            ) : (
+                                <div className="h-10 bg-slate-800/40 rounded-lg flex items-center justify-center text-[10px] text-slate-600 italic">Audio generation in progress...</div>
+                            )}
                         </div>
-                    )}
+                        <button className="flex items-center justify-center gap-3 bg-white text-brand-900 font-black py-4 rounded-2xl hover:bg-brand-50 transition-all shadow-xl active:scale-95 text-sm uppercase group">
+                            <ArrowDownTrayIcon className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" /> 
+                            Download Combined MP4
+                        </button>
+                    </div>
+                </div>
+                <div className="mt-6 flex items-center gap-3 text-[10px] text-slate-500 bg-black/20 p-3 rounded-lg border border-white/5">
+                    <ExclamationCircleIcon className="w-4 h-4 text-brand-500" />
+                    <span>In this MVP, audio and video are synchronized in real-time. Use the 'Download' button to get the processed file.</span>
                 </div>
              </div>
           )}
