@@ -67,41 +67,39 @@ export interface TranslationResult {
 export interface AudioResult {
   audioUrl: string;
   duration: number;
+  blob?: Blob;
 }
 
 export interface VideoResult {
   videoUrl: string;
+  blob?: Blob;
 }
 
 /**
  * Service Provider Interfaces
  */
 
-// Interface for Speech-to-Text providers
 export interface ISpeechToTextProvider {
   name: string;
   transcribe(base64Data: string, mimeType: string, language?: string): Promise<TranscriptResult>;
 }
 
-// Interface for Translation providers
 export interface ITranslationProvider {
   name: string;
   translate(transcript: TranscriptResult, targetLang: string): Promise<TranslationResult>;
 }
 
-// Interface for Text-to-Speech providers
 export interface ITextToSpeechProvider {
   name: string;
   synthesize(translation: TranslationResult, voiceId?: string): Promise<AudioResult>;
 }
 
-// Interface for LipSync providers
 export interface ILipSyncProvider {
   name: string;
   sync(videoFile: File, audioUrl: string): Promise<VideoResult>;
 }
 
-export type JobStatus = 'IDLE' | 'UPLOADING' | 'TRANSCRIBING' | 'TRANSLATING' | 'DUBBING' | 'LIPSYNCING' | 'COMPLETED' | 'FAILED';
+export type JobStatus = 'IDLE' | 'UPLOADING' | 'TRANSCRIBING' | 'TRANSLATING' | 'DUBBING' | 'LIPSYNCING' | 'MUXING' | 'COMPLETED' | 'FAILED';
 
 export interface JobState {
   id: string;
