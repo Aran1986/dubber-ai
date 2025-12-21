@@ -158,10 +158,10 @@ export default function Dashboard() {
                 {/* Metro Steps (With Base Line) */}
                 <div className="relative mb-14 px-8">
                    {/* WHITE Permanent Connector Line (Requested Fix) */}
-                   <div className="absolute top-7 left-14 right-14 h-[3px] bg-white/20 rounded-full -z-0 shadow-inner"></div>
+                   <div className="absolute top-7 left-14 right-14 h-[3px] bg-white/40 rounded-full -z-0 shadow-inner"></div>
                    
                    {/* Active Progress Line */}
-                   <div className="absolute top-7 left-14 h-[3px] bg-brand-500 transition-all duration-1000 -z-0 shadow-[0_0_10px_rgba(14,165,233,0.5)]" style={{ width: `${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}%` }}></div>
+                   <div className="absolute top-7 left-14 h-[3px] bg-brand-500 transition-all duration-1000 -z-0 shadow-[0_0_15px_rgba(14,165,233,0.6)]" style={{ width: `${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}%` }}></div>
 
                    <div className="flex items-center w-full justify-between relative z-10">
                       {STEPS.map((s, idx) => (

@@ -1,78 +1,69 @@
 
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
+
 export class MuxerService {
+  private static ffmpeg: FFmpeg | null = null;
+
   /**
-   * High-reliability Muxing: Combines video and audio by decoding audio into a buffer.
-   * This bypasses the 'already connected' MediaElementSourceNode error.
+   * Initializes and loads FFmpeg.wasm.
+   * This is much more reliable than MediaRecorder as it performs actual container muxing.
+   */
+  static async load() {
+    if (this.ffmpeg) return this.ffmpeg;
+    
+    this.ffmpeg = new FFmpeg();
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    
+    await this.ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    
+    return this.ffmpeg;
+  }
+
+  /**
+   * Combines a video file and an audio file into a single MP4 using FFmpeg.
+   * Logic: Copy video stream (no re-encode, fast) + Re-encode audio to AAC (standard for MP4).
    */
   static async combine(videoUrl: string, audioUrl: string): Promise<Blob> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const v = document.createElement('video');
-        v.src = videoUrl;
-        v.muted = true;
-        v.crossOrigin = "anonymous";
-        v.playsInline = true;
+    const ffmpeg = await this.load();
 
-        // Fetch and decode audio to avoid MediaElementSource connection issues
-        const audioResponse = await fetch(audioUrl);
-        const audioData = await audioResponse.arrayBuffer();
-        
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await ctx.decodeAudioData(audioData);
-        
-        const onReady = () => {
-          if (v.readyState < 3) return;
+    try {
+      // Write files to virtual filesystem
+      await ffmpeg.writeFile('input_video.mp4', await fetchFile(videoUrl));
+      await ffmpeg.writeFile('input_audio.wav', await fetchFile(audioUrl));
 
-          try {
-            const vStream = (v as any).captureStream ? (v as any).captureStream() : (v as any).mozCaptureStream();
-            const dest = ctx.createMediaStreamDestination();
-            
-            const source = ctx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(dest);
+      // Execute FFmpeg command:
+      // -i: inputs
+      // -c:v copy: Just copy video frames without re-encoding (extremely fast & high quality)
+      // -c:a aac: Re-encode audio to AAC format for maximum MP4 compatibility
+      // -map: explicitly map first video and first audio stream
+      // -shortest: stop when the shortest stream ends
+      await ffmpeg.exec([
+        '-i', 'input_video.mp4',
+        '-i', 'input_audio.wav',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-shortest',
+        'output.mp4'
+      ]);
 
-            const combinedStream = new MediaStream([
-              ...vStream.getVideoTracks(),
-              ...dest.stream.getAudioTracks()
-            ]);
+      // Read resulting file
+      const data = await ffmpeg.readFile('output.mp4');
+      
+      // Cleanup virtual filesystem
+      await ffmpeg.deleteFile('input_video.mp4');
+      await ffmpeg.deleteFile('input_audio.wav');
+      await ffmpeg.deleteFile('output.mp4');
 
-            const recorder = new MediaRecorder(combinedStream, { 
-              mimeType: MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm' 
-            });
-
-            const chunks: Blob[] = [];
-            recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
-            
-            recorder.onstop = () => {
-              const blob = new Blob(chunks, { type: recorder.mimeType });
-              ctx.close();
-              resolve(blob);
-            };
-
-            v.play();
-            source.start(0);
-            recorder.start();
-
-            v.onended = () => {
-              recorder.stop();
-              source.stop();
-            };
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        v.oncanplaythrough = onReady;
-        v.onerror = () => reject(new Error("Video failed to load for muxing"));
-        
-        // Safety timeout for video loading
-        setTimeout(() => {
-          if (v.readyState < 3) reject(new Error("Muxing video load timeout"));
-        }, 15000);
-
-      } catch (err) {
-        reject(err);
-      }
-    });
+      return new Blob([(data as any).buffer], { type: 'video/mp4' });
+    } catch (err) {
+      console.error("FFmpeg Muxing failed:", err);
+      throw new Error("FFmpeg engine failed to mux media. Check console for details.");
+    }
   }
 }
