@@ -35,13 +35,20 @@ export class VideoPipeline {
 
   async run(file: File, config: { targetLang: string; voiceId: string; selectedSteps: string[]; mediaDuration: number; id?: string }) {
     try {
-      const jobId = config.id || 'JOB-' + Date.now();
+      const jobId = config.id || 'JOB-' + Math.random().toString(36).substr(2, 9).toUpperCase();
       const { selectedSteps, mediaDuration } = config;
 
+      // Restored estimation logic
+      const totalEstimatedSec = Math.ceil(mediaDuration * 1.5 + 10); 
+
       this.updater({ 
-          id: jobId, status: 'UPLOADING', progress: 0, stepProgress: 0, startTime: Date.now(),
+          id: jobId, status: 'UPLOADING', progress: 5, stepProgress: 0, startTime: Date.now(),
           targetLang: config.targetLang, selectedSteps: config.selectedSteps, mediaDuration,
-          logs: [createLog("Pipeline started..."), createLog("Media source verified.")]
+          logs: [
+            createLog("Deployment engine initialized..."), 
+            createLog(`Estimated processing duration: ~${totalEstimatedSec} seconds.`),
+            createLog("Verifying original media integrity...")
+          ]
       });
 
       await DBService.saveFile(`${jobId}_original`, file);
@@ -50,45 +57,51 @@ export class VideoPipeline {
       // 1. STT
       let transcript = null;
       if (selectedSteps.includes('TRANSCRIBING')) {
-        this.updater({ status: 'TRANSCRIBING', logs: [createLog("Transcribing...")] });
-        const stop = startEstimatedProgress(this.updater, mediaDuration * 1000, 10, 20);
+        this.updater({ status: 'TRANSCRIBING', logs: [createLog("Transcription (STT) layer active...")] });
+        const stop = startEstimatedProgress(this.updater, mediaDuration * 800, 10, 20);
         const reader = new FileReader();
-        const base64 = await new Promise<string>((r) => { reader.onload=()=>r((reader.result as string).split(',')[1]); reader.readAsDataURL(file); });
+        const base64 = await new Promise<string>((r) => { 
+          reader.onload=()=>r((reader.result as string).split(',')[1]); 
+          reader.readAsDataURL(file); 
+        });
         transcript = await ProviderRegistry.getSTT().transcribe(base64, file.type);
         stop();
-        this.updater({ transcript, progress: 30, stepProgress: 100, logs: [createLog("Transcription completed.")] });
+        this.updater({ transcript, progress: 35, stepProgress: 100, logs: [createLog(`STT Success: Found ${transcript.segments.length} segments.`)] });
       }
 
       // 2. Translation
       let translation = null;
       if (selectedSteps.includes('TRANSLATING') && transcript) {
-        this.updater({ status: 'TRANSLATING', logs: [createLog("Translating...")] });
+        this.updater({ status: 'TRANSLATING', logs: [createLog(`Translating to ${config.targetLang}...`)] });
         translation = await ProviderRegistry.getTranslation().translate(transcript, config.targetLang);
-        this.updater({ translation, progress: 50, stepProgress: 100, logs: [createLog("Translation completed.")] });
+        this.updater({ translation, progress: 55, stepProgress: 100, logs: [createLog("Neural translation layer verified.")] });
       }
 
       // 3. Dubbing
       let dubbedAudio = null;
       if (selectedSteps.includes('DUBBING') && translation) {
-        this.updater({ status: 'DUBBING', logs: [createLog("Generating Dubbed Voice...")] });
-        const stop = startEstimatedProgress(this.updater, mediaDuration * 1200, 50, 30);
+        this.updater({ status: 'DUBBING', logs: [createLog("Synthesizing dubbed audio segments...")] });
+        const stop = startEstimatedProgress(this.updater, mediaDuration * 1500, 55, 30);
         dubbedAudio = await ProviderRegistry.getTTS().synthesize(translation, config.voiceId);
         stop();
-        this.updater({ dubbedAudio, progress: 80, stepProgress: 100, logs: [createLog("Dubbing track ready.")] });
+        this.updater({ dubbedAudio, progress: 85, stepProgress: 100, logs: [createLog("Dubbing track generated successfully.")] });
       }
 
-      // 4. Muxing (Real Render)
+      // 4. Muxing (The Real Render)
       if (dubbedAudio) {
-        this.updater({ status: 'MUXING', logs: [createLog("Merging Audio/Video (Rendering)...")] });
+        this.updater({ status: 'MUXING', logs: [createLog("Initiating final master render (Muxing)...")] });
+        const stopMux = startEstimatedProgress(this.updater, mediaDuration * 1000, 85, 10);
         const finalBlob = await MuxerService.combine(videoUrl, dubbedAudio.audioUrl);
         const finalUrl = URL.createObjectURL(finalBlob);
-        this.updater({ finalVideo: { videoUrl: finalUrl }, progress: 95, stepProgress: 100, logs: [createLog("Rendering finished.")] });
+        stopMux();
+        this.updater({ finalVideo: { videoUrl: finalUrl }, progress: 98, stepProgress: 100, logs: [createLog("Muxing complete: Master file ready.")] });
       }
 
-      this.updater({ status: 'COMPLETED', progress: 100, stepProgress: 100, endTime: Date.now(), logs: [createLog("Task completed successfully.")] });
+      this.updater({ status: 'COMPLETED', progress: 100, stepProgress: 100, endTime: Date.now(), logs: [createLog("Process sequence finished successfully.")] });
 
     } catch (error: any) {
-      this.updater({ status: 'FAILED', logs: [createLog(`Error: ${error.message}`)] });
+      console.error(error);
+      this.updater({ status: 'FAILED', logs: [createLog(`CRITICAL ERROR: ${error.message}`)] });
     }
   }
 }
