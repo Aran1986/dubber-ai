@@ -13,7 +13,9 @@
     "@google/genai": "^1.34.0",
     "@heroicons/react": "^2.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
