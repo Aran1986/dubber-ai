@@ -44,7 +44,6 @@ const INITIAL_STATE: JobState = {
 export default function Dashboard() {
   const [job, setJob] = useState<JobState>(INITIAL_STATE);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [history, setHistory] = useState<JobState[]>([]);
   
   const pipelineRef = useRef<VideoPipeline | null>(null);
@@ -108,200 +107,209 @@ export default function Dashboard() {
 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Sidebar History */}
-        <div className="lg:col-span-3 space-y-6">
-           <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl h-full flex flex-col min-h-[400px]">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-500" /> Recent Projects</h2>
+        {/* Sidebar */}
+        <div className="lg:col-span-3">
+           <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl h-full flex flex-col min-h-[500px]">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-500" /> Recent Activity</h2>
               <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
                  {history.map(p => (
-                    <div key={p.id} onClick={() => setJob(p)} className={`p-3 rounded-xl border cursor-pointer transition-all ${job.id === p.id ? 'bg-brand-500/10 border-brand-500 shadow-[0_0_15px_rgba(14,165,233,0.1)]' : 'border-slate-800 bg-dark-bg/40 hover:border-slate-600'}`}>
-                        <div className="text-[9px] text-slate-500 mb-1">#{p.id.split('-')[1]}</div>
-                        <div className="text-xs font-bold text-white mb-1 truncate">{p.originalFile ? (p.originalFile as any).name : 'Media Job'}</div>
-                        <span className={`text-[9px] font-black uppercase tracking-tighter ${p.status === 'COMPLETED' ? 'text-green-400' : 'text-brand-400'}`}>{p.status}</span>
+                    <div key={p.id} onClick={() => setJob(p)} className={`p-4 rounded-2xl border cursor-pointer transition-all ${job.id === p.id ? 'bg-brand-500/10 border-brand-500 shadow-lg' : 'border-slate-800 bg-dark-bg/40 hover:border-slate-700'}`}>
+                        <div className="text-[9px] text-slate-500 mb-1 font-mono tracking-tighter">#{p.id.split('-')[1]}</div>
+                        <div className="text-xs font-bold text-white mb-2 truncate">{p.originalFile ? (p.originalFile as any).name : 'Media Task'}</div>
+                        <div className="flex justify-between items-center">
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${p.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : 'bg-brand-500/20 text-brand-400'}`}>{p.status}</span>
+                          <span className="text-[9px] text-slate-600">{formatTime((p.endTime || 0) - (p.startTime || 0))}</span>
+                        </div>
                     </div>
                  ))}
-                 {history.length === 0 && <div className="text-center py-10 text-slate-600 text-xs italic">No previous tasks</div>}
               </div>
-              <button onClick={() => setJob(INITIAL_STATE)} className="mt-4 w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-300 transition-colors border border-slate-700">New Task</button>
+              <button onClick={() => setJob(INITIAL_STATE)} className="mt-6 w-full py-4 bg-brand-600/10 hover:bg-brand-600/20 border border-brand-500/30 rounded-2xl text-xs font-black text-brand-400 uppercase transition-all">Create New Task</button>
            </div>
         </div>
 
-        {/* Main Workspace */}
+        {/* Workspace */}
         <div className="lg:col-span-9 space-y-6">
            
-           {/* Progress Dashboard */}
-           <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+           {/* Pipeline Header */}
+           <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-2xl relative">
                 <div className="flex justify-between items-start mb-10">
                     <div>
-                        <h2 className="text-2xl font-black text-white tracking-tight">Studio Pipeline</h2>
-                        <div className="flex items-center gap-4 mt-1">
-                          <p className="text-xs text-slate-500 font-bold uppercase">Estimated Cost: <span className="text-brand-400">{Math.ceil(job.mediaDuration)} Credits</span></p>
-                          <p className="text-xs text-slate-500 font-bold uppercase">Elapsed: <span className="text-white">{formatTime(elapsedTime)}</span></p>
+                        <h2 className="text-3xl font-black text-white tracking-tighter">STUDIO DASHBOARD</h2>
+                        <div className="flex items-center gap-6 mt-2">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><MusicalNoteIcon className="w-4 h-4" /> Media Length: <span className="text-brand-400">{job.mediaDuration.toFixed(1)}s</span></div>
+                          <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><ClockIconOutline className="w-4 h-4" /> Process Time: <span className="text-white">{formatTime(elapsedTime)}</span></div>
                         </div>
                     </div>
                     <div className="text-right">
-                        <div className="text-4xl font-black text-brand-500 drop-shadow-[0_0_10px_rgba(14,165,233,0.3)]">{Math.round(job.progress)}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Progress</div>
+                        <div className="text-5xl font-black text-brand-500 drop-shadow-[0_0_15px_rgba(14,165,233,0.4)]">{Math.round(job.progress)}%</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Global Confidence</div>
                     </div>
                 </div>
 
-                {/* Main Progress Bar */}
-                <div className="mb-12">
-                    <div className="w-full h-4 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700 shadow-inner">
-                        <div className="h-full bg-gradient-to-r from-brand-600 via-brand-500 to-indigo-600 transition-all duration-700 relative" style={{ width: `${job.progress}%` }}>
-                           <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[progress-bar-stripes_1s_linear_infinite]"></div>
+                {/* Main Progress (100% Opacity) */}
+                <div className="mb-14">
+                    <div className="w-full h-5 bg-slate-900 rounded-full p-1 border border-slate-800 shadow-inner">
+                        <div className="h-full bg-gradient-to-r from-brand-600 to-indigo-600 rounded-full transition-all duration-1000 relative" style={{ width: `${job.progress}%` }}>
+                           <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%)] bg-[length:20px_20px] animate-[progress-bar-stripes_1s_linear_infinite]"></div>
                         </div>
                     </div>
                 </div>
 
-                {/* Metro Pipeline with Connecting Lines */}
-                <div className="relative mb-12 px-6">
-                   {/* Background Connector Line */}
-                   <div className="absolute top-6 left-12 right-12 h-1.5 bg-slate-800 rounded-full overflow-hidden -z-0">
-                      <div className="h-full bg-brand-500 transition-all duration-700" style={{ width: `${(STEPS.findIndex(s => s.id === job.status) + 1) * (100 / STEPS.length)}%` }}></div>
-                   </div>
+                {/* Metro Steps (With Base Line) */}
+                <div className="relative mb-14 px-8">
+                   {/* Permanent Connector Line */}
+                   <div className="absolute top-7 left-14 right-14 h-[3px] bg-slate-800 rounded-full -z-0 shadow-inner"></div>
+                   {/* Active Progress Line */}
+                   <div className="absolute top-7 left-14 h-[3px] bg-brand-500 transition-all duration-1000 -z-0 shadow-[0_0_10px_rgba(14,165,233,0.5)]" style={{ width: `${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}%` }}></div>
 
                    <div className="flex items-center w-full justify-between relative z-10">
                       {STEPS.map((s, idx) => (
-                        <div key={s.id} className="flex flex-col items-center gap-3">
+                        <div key={s.id} className="flex flex-col items-center gap-4">
                           <button 
-                            onClick={() => handleStepClick(s.id)} 
                             disabled={s.mandatory || job.status !== 'IDLE'} 
+                            onClick={() => handleStepClick(s.id)}
                             className={`w-14 h-14 rounded-full flex items-center justify-center border-[4px] bg-dark-surface transition-all duration-500 relative
-                                ${isActive(idx) ? 'border-brand-500 scale-125 shadow-[0_0_20px_rgba(14,165,233,0.5)] text-brand-500' : 
-                                  isDone(idx) ? 'border-brand-500 bg-brand-500 text-white' : 
-                                  isStepSelected(s.id) ? 'border-slate-600 text-slate-400' : 'border-slate-800 text-slate-800'}
+                                ${isActive(idx) ? 'border-brand-500 scale-125 shadow-2xl text-brand-500' : 
+                                  isDone(idx) ? 'border-brand-500 bg-brand-500 text-white shadow-brand-500/20' : 
+                                  isStepSelected(s.id) ? 'border-slate-600 text-slate-400' : 'border-slate-800 text-slate-700'}
                             `}
                           >
                             <s.icon className="w-6 h-6" />
-                            {isDone(idx) && <CheckCircleIcon className="w-4 h-4 absolute -bottom-1 -right-1 text-white bg-green-500 rounded-full" />}
                           </button>
-                          <span className={`text-[9px] font-black uppercase tracking-tighter ${isActive(idx) ? 'text-brand-400' : 'text-slate-500'}`}>{s.label}</span>
+                          <span className={`text-[9px] font-black uppercase tracking-tighter ${isActive(idx) ? 'text-brand-400' : isDone(idx) ? 'text-slate-300' : 'text-slate-600'}`}>{s.label}</span>
                         </div>
                       ))}
                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-800/30 rounded-3xl border border-slate-700/50">
-                    <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">Input Media</label>
-                        <div className="relative group border-2 border-dashed border-slate-700 rounded-2xl p-4 text-center hover:border-brand-500 transition-all cursor-pointer bg-dark-bg/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-900/40 rounded-[2rem] border border-slate-800 shadow-inner">
+                    <div className="flex flex-col justify-center">
+                        <label className="text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest pl-1">Media Payload</label>
+                        <div className="relative group border-2 border-dashed border-slate-800 rounded-2xl p-5 text-center hover:border-brand-500/50 transition-all cursor-pointer bg-dark-bg/40">
                           <input type="file" onChange={(e) => {
                              if(e.target.files?.[0]) {
                                const file = e.target.files[0];
-                               const url = URL.createObjectURL(file);
                                if(durationRef.current) {
-                                  durationRef.current.src = url;
+                                  durationRef.current.src = URL.createObjectURL(file);
                                   durationRef.current.onloadedmetadata = () => {
                                     setJob(prev => ({...prev, originalFile: file, mediaDuration: durationRef.current!.duration}));
                                   };
                                }
                              }
                           }} className="absolute inset-0 opacity-0 cursor-pointer" />
-                          <CloudArrowUpIcon className="w-6 h-6 mx-auto text-slate-600 group-hover:text-brand-500 mb-1" />
-                          <p className="text-[10px] font-bold text-slate-500 truncate">{job.originalFile ? (job.originalFile as any).name : 'Select File'}</p>
+                          <CloudArrowUpIcon className="w-8 h-8 mx-auto text-slate-700 group-hover:text-brand-500 mb-2 transition-colors" />
+                          <p className="text-[10px] font-bold text-slate-500 truncate uppercase tracking-tight">{job.originalFile ? (job.originalFile as any).name : 'Drop Media Here'}</p>
                         </div>
                     </div>
-                    <div className="flex flex-col justify-end">
+                    <div className="flex items-end">
                       <button 
                         onClick={() => { if(job.originalFile) { pipelineRef.current = new VideoPipeline(updateJobState); pipelineRef.current.run(job.originalFile, { targetLang: job.targetLang, voiceId: job.selectedVoice?.id || 'Puck', selectedSteps: job.selectedSteps, mediaDuration: job.mediaDuration }); } }} 
                         disabled={!job.originalFile || job.status !== 'IDLE'} 
-                        className="w-full bg-brand-600 hover:bg-brand-500 text-white font-black py-5 rounded-2xl shadow-xl transition active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-3 text-lg"
+                        className="w-full bg-brand-600 hover:bg-brand-500 text-white font-black py-5 rounded-2xl shadow-2xl transition active:scale-[0.97] disabled:opacity-30 disabled:grayscale flex items-center justify-center gap-4 text-xl tracking-tighter"
                       >
-                        <PlayIcon className="w-6 h-6" /> START DEPLOYMENT
+                        <PlayIcon className="w-7 h-7" /> INITIATE DEPLOYMENT
                       </button>
                     </div>
                 </div>
 
-                {/* Improved Logs with Estimation */}
-                <div className="mt-8">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Activity Logs</span>
-                    <span className="text-[9px] text-slate-600 italic">Streaming live events...</span>
+                {/* Activity Logs */}
+                <div className="mt-8 bg-black/60 rounded-2xl border border-slate-800 p-6 shadow-inner">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black text-slate-600 uppercase">Deployment Telemetry</span>
+                    <span className="text-[9px] text-brand-500/60 font-mono animate-pulse">SYSTEM_ACTIVE</span>
                   </div>
-                  <div className="bg-black/40 rounded-2xl p-5 h-40 overflow-y-auto font-mono text-[10px] border border-dark-border custom-scrollbar space-y-2">
+                  <div className="h-44 overflow-y-auto custom-scrollbar font-mono text-[10px] space-y-2">
                       {job.logs.map((log, i) => (
-                        <div key={i} className="flex gap-4 animate-in slide-in-from-left-2">
-                          <span className="text-brand-500 font-bold shrink-0">[{log.time}]</span>
-                          <span className="text-slate-300">{log.message}</span>
+                        <div key={i} className="flex gap-4 border-l-2 border-brand-500/20 pl-4 py-1 animate-in slide-in-from-left-4">
+                          <span className="text-brand-500 font-bold opacity-60">[{log.time}]</span>
+                          <span className="text-slate-400 leading-relaxed">{log.message}</span>
                         </div>
                       ))}
-                      {job.logs.length === 0 && <div className="text-slate-700 italic">Waiting for process initiation...</div>}
+                      {job.logs.length === 0 && <div className="text-slate-800 italic">No telemetry data...</div>}
                   </div>
                 </div>
            </div>
 
-           {/* Content Results: Continuous Text View */}
+           {/* Results: Script Paragraph View */}
            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 {job.transcript && (
                     <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-xl">
-                        <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><DocumentTextIcon className="w-5 h-5 text-brand-500" /> Original Narrative</h3>
-                          <span className="text-[10px] bg-slate-800 text-slate-400 px-3 py-1 rounded-full font-bold">SOURCE</span>
+                        <div className="flex items-center justify-between mb-8">
+                          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><DocumentTextIcon className="w-5 h-5 text-brand-500" /> Source Narrative</h3>
+                          <span className="text-[10px] bg-slate-800 text-slate-500 px-3 py-1 rounded-lg font-black">ORIGINAL</span>
                         </div>
-                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-80 overflow-y-auto custom-scrollbar p-6 leading-relaxed text-slate-300 text-sm" dir="auto">
+                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-6" dir="auto">
                             {job.transcript.segments.map((s, i) => (
-                                <span key={i} className="group relative inline hover:bg-brand-500/10 rounded px-1 transition-colors cursor-help">
-                                    {s.text}{' '}
-                                    <span className="absolute -top-6 left-0 bg-brand-600 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                                      {s.start.toFixed(1)}s - {s.end.toFixed(1)}s
-                                    </span>
-                                </span>
+                                <div key={i} className="relative pl-6 border-l border-slate-700/50 group">
+                                    <div className="absolute left-[-1px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <span className="text-[10px] font-black text-brand-500 uppercase tracking-tighter">Speaker {s.speaker || '1'}</span>
+                                      <span className="text-[9px] text-slate-600 font-mono">[{s.start.toFixed(1)}s → {s.end.toFixed(1)}s]</span>
+                                    </div>
+                                    <p className="text-sm text-slate-300 leading-relaxed tracking-tight">{s.text}</p>
+                                </div>
                             ))}
                         </div>
                     </div>
                 )}
                 {job.translation && (
-                    <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-xl border-l-brand-500/40">
-                        <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><LanguageIcon className="w-5 h-5 text-brand-500" /> Translated Script</h3>
-                          <span className="text-[10px] bg-brand-500/20 text-brand-400 px-3 py-1 rounded-full font-bold uppercase">{job.targetLang}</span>
+                    <div className="bg-dark-surface border border-dark-border rounded-3xl p-8 shadow-xl">
+                        <div className="flex items-center justify-between mb-8">
+                          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><LanguageIcon className="w-5 h-5 text-brand-500" /> Translated Output</h3>
+                          <span className="text-[10px] bg-brand-500/20 text-brand-400 px-3 py-1 rounded-lg font-black uppercase">{job.targetLang}</span>
                         </div>
-                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-80 overflow-y-auto custom-scrollbar p-6 leading-relaxed text-white text-sm" dir="auto">
+                        <div className="bg-dark-bg/60 rounded-2xl border border-dark-border h-96 overflow-y-auto custom-scrollbar p-8 space-y-6" dir="auto">
                             {job.translation.segments.map((s, i) => (
-                                <span key={i} className="group relative inline hover:bg-brand-500/20 rounded px-1 transition-colors cursor-help">
-                                    {s.text}{' '}
-                                    <span className="absolute -top-6 left-0 bg-brand-600 text-white text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                                      {s.start.toFixed(1)}s - {s.end.toFixed(1)}s
-                                    </span>
-                                </span>
+                                <div key={i} className="relative pl-6 border-l border-brand-500/20 group">
+                                    <div className="absolute left-[-1px] top-0 bottom-0 w-[2px] bg-brand-500/0 group-hover:bg-brand-500 transition-all"></div>
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <span className="text-[10px] font-black text-brand-400 uppercase tracking-tighter">Speaker {s.speaker || '1'}</span>
+                                      <span className="text-[9px] text-slate-600 font-mono">[{s.start.toFixed(1)}s → {s.end.toFixed(1)}s]</span>
+                                    </div>
+                                    <p className="text-sm text-white leading-relaxed tracking-tight">{s.text}</p>
+                                </div>
                             ))}
                         </div>
                     </div>
                 )}
            </div>
 
-           {/* Media Outputs: Dubbed Audio & Final Video */}
+           {/* Media Exports */}
            {(job.dubbedAudio || job.finalVideo) && (
-                <div className="bg-gradient-to-br from-dark-surface to-slate-900 border border-brand-500/20 rounded-3xl p-8 shadow-2xl space-y-8 animate-in zoom-in-95">
+                <div className="bg-gradient-to-br from-dark-surface to-slate-900 border border-brand-500/20 rounded-[2.5rem] p-10 shadow-2xl space-y-10 animate-in zoom-in-95">
                     
-                    {/* Final Video Render */}
+                    {/* Video Master */}
                     {job.finalVideo && (
-                      <div className="space-y-4">
+                      <div className="space-y-6">
                         <div className="flex items-center justify-between">
-                           <h3 className="text-lg font-black text-white flex items-center gap-2"><VideoCameraIcon className="w-6 h-6 text-brand-500" /> Final Master (Rendered)</h3>
-                           <a href={job.finalVideo.videoUrl} download={`dubbed_${job.id}.mp4`} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition shadow-lg">
-                              <ArrowDownTrayIcon className="w-4 h-4" /> DOWNLOAD MP4
+                           <div className="flex items-center gap-3">
+                             <div className="p-3 bg-brand-500/10 rounded-2xl"><VideoCameraIcon className="w-6 h-6 text-brand-500" /></div>
+                             <h3 className="text-xl font-black text-white uppercase tracking-tighter">Final Master Render</h3>
+                           </div>
+                           <a href={job.finalVideo.videoUrl} download={`dub_master_${job.id}.mp4`} className="group flex items-center gap-3 bg-white text-brand-950 text-xs font-black px-6 py-3 rounded-2xl transition shadow-xl hover:bg-brand-50 active:scale-95">
+                              <ArrowDownTrayIcon className="w-5 h-5 group-hover:bounce" /> DOWNLOAD MP4
                            </a>
                         </div>
-                        <div className="aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/5 shadow-brand-500/10">
+                        <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 shadow-brand-500/10">
                             <video src={job.finalVideo.videoUrl} className="w-full h-full" controls />
                         </div>
                       </div>
                     )}
 
-                    {/* Dubbed Audio Track */}
+                    {/* Isolated Audio Track (RESTORED) */}
                     {job.dubbedAudio && (
-                      <div className="bg-dark-bg/60 p-6 rounded-3xl border border-dark-border shadow-inner">
-                        <div className="flex items-center justify-between mb-4">
-                           <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                             <SpeakerWaveIcon className="w-5 h-5 text-brand-500" /> Isolated Dubbed Track
-                           </h4>
-                           <a href={job.dubbedAudio.audioUrl} download={`audio_${job.id}.wav`} className="text-brand-400 hover:text-brand-300 text-[9px] font-bold flex items-center gap-1 transition">
-                              <ArrowDownTrayIcon className="w-4 h-4" /> DOWNLOAD WAV
+                      <div className="bg-dark-bg/60 p-8 rounded-[2rem] border border-slate-800 shadow-inner group">
+                        <div className="flex items-center justify-between mb-6">
+                           <div className="flex items-center gap-3">
+                             <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500"><SpeakerWaveIcon className="w-5 h-5" /></div>
+                             <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Isolated Dubbed Audio</h4>
+                           </div>
+                           <a href={job.dubbedAudio.audioUrl} download={`dub_audio_${job.id}.wav`} className="text-brand-400 hover:text-brand-300 text-[10px] font-black flex items-center gap-2 transition-all">
+                              <ArrowDownTrayIcon className="w-4 h-4" /> EXPORT WAV
                            </a>
                         </div>
                         <audio src={job.dubbedAudio.audioUrl} className="w-full h-12" controls />
+                        <p className="text-[9px] text-slate-600 mt-4 italic">Note: This is the high-fidelity synthesized track before mixing.</p>
                       </div>
                     )}
                 </div>
@@ -313,6 +321,13 @@ export default function Dashboard() {
         @keyframes progress-bar-stripes {
           from { background-position: 20px 0; }
           to { background-position: 0 0; }
+        }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+        .group:hover .group-hover\:bounce {
+          animation: bounce 0.5s ease infinite;
         }
       `}</style>
     </div>

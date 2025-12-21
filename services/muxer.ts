@@ -1,83 +1,70 @@
 
 export class MuxerService {
   /**
-   * Real Muxing: Combines video and audio into a single MP4 file in the browser.
-   * Ensures the recorder waits for audio and video to be fully ready.
+   * Real Muxing logic with proper AudioContext lifecycle management.
+   * Fixes the 'already connected' error by using unique elements and cleanup.
    */
   static async combine(videoUrl: string, audioUrl: string): Promise<Blob> {
     return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      const audio = document.createElement('audio');
+      // Create entirely new, detached elements for muxing
+      const v = document.createElement('video');
+      const a = document.createElement('audio');
       
-      video.src = videoUrl;
-      audio.src = audioUrl;
-      
-      video.muted = true;
-      video.crossOrigin = "anonymous";
-      audio.crossOrigin = "anonymous";
-      video.playsInline = true;
+      v.src = videoUrl;
+      a.src = audioUrl;
+      v.muted = true;
+      v.crossOrigin = "anonymous";
+      a.crossOrigin = "anonymous";
 
-      const setupMuxing = () => {
-        // Ensure both elements are ready
-        if (video.readyState < 3 || audio.readyState < 3) return;
+      const onReady = () => {
+        if (v.readyState < 3 || a.readyState < 3) return;
 
         try {
-          // Use captureStream on video element
-          const stream = (video as any).captureStream ? (video as any).captureStream() : (video as any).mozCaptureStream();
+          // Capture stream from video
+          const vStream = (v as any).captureStream ? (v as any).captureStream() : (v as any).mozCaptureStream();
           
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 44100 });
-          const source = audioCtx.createMediaElementSource(audio);
-          const destination = audioCtx.createMediaStreamDestination();
+          // Create a fresh AudioContext for this specific muxing task
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const dest = ctx.createMediaStreamDestination();
           
-          source.connect(destination);
-          // Optional: source.connect(audioCtx.destination); if you want to hear it during render
+          // Connect the fresh audio element to the destination
+          const source = ctx.createMediaElementSource(a);
+          source.connect(dest);
 
           const combinedStream = new MediaStream([
-            ...stream.getVideoTracks(),
-            ...destination.stream.getAudioTracks()
+            ...vStream.getVideoTracks(),
+            ...dest.stream.getAudioTracks()
           ]);
 
-          // We use webm as an intermediary if needed, but labeling as mp4 for download consistency 
-          // Browser support varies, but 'video/webm;codecs=vp9,opus' is generally stable
           const recorder = new MediaRecorder(combinedStream, { 
-            mimeType: MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm'
+            mimeType: MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm' 
           });
-          
+
           const chunks: Blob[] = [];
-          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-          
+          recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
           recorder.onstop = () => {
             const blob = new Blob(chunks, { type: recorder.mimeType });
+            ctx.close();
             resolve(blob);
           };
 
-          // Start both
-          video.play();
-          audio.play();
+          v.play();
+          a.play();
           recorder.start();
 
-          video.onended = () => {
+          v.onended = () => {
             recorder.stop();
-            audio.pause();
-            audioCtx.close().catch(() => {});
-          };
-          
-          video.onerror = (e) => {
-             recorder.stop();
-             reject(new Error("Video playback error during muxing"));
+            a.pause();
           };
         } catch (err) {
           reject(err);
         }
       };
 
-      video.addEventListener('canplaythrough', setupMuxing);
-      audio.addEventListener('canplaythrough', setupMuxing);
-      
-      // Safety timeout
-      setTimeout(() => {
-        if (video.readyState < 3) reject(new Error("Muxing timed out waiting for media"));
-      }, 30000);
+      v.oncanplaythrough = onReady;
+      a.oncanplaythrough = onReady;
+      v.onerror = () => reject(new Error("Video failed to load for muxing"));
+      a.onerror = () => reject(new Error("Audio failed to load for muxing"));
     });
   }
 }

@@ -101,12 +101,15 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
     const audioBuffers: Uint8Array[] = [];
     let currentTimeCursor = 0;
 
-    // Sequential generation to avoid rate limits and ensures all segments are processed
-    for (const segment of translation.segments) {
+    for (let i = 0; i < translation.segments.length; i++) {
+        const segment = translation.segments[i];
         const gap = segment.start - currentTimeCursor;
         if (gap > 0.05) audioBuffers.push(createSilence(gap, sampleRate));
         
         try {
+            // Log progress for each segment
+            console.debug(`Synthesizing segment ${i+1}/${translation.segments.length}`);
+            
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
                 contents: [{ parts: [{ text: segment.text }] }],
@@ -122,7 +125,10 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
                 currentTimeCursor = segment.end; 
             }
         } catch (e) {
-            console.error("TTS Segment failed", e);
+            console.error(`TTS Segment ${i} failed`, e);
+            // Push silence if segment fails to keep timeline synced
+            audioBuffers.push(createSilence(segment.end - segment.start, sampleRate));
+            currentTimeCursor = segment.end;
         }
     }
 
