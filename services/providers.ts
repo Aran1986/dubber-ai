@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import { 
   ISpeechToTextProvider, 
   ITranslationProvider, 
@@ -8,8 +8,7 @@ import {
   TranscriptResult,
   TranslationResult,
   AudioResult,
-  VideoResult,
-  Segment
+  VideoResult
 } from '../types';
 
 const getAIClient = () => {
@@ -18,7 +17,7 @@ const getAIClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1500): Promise<T> => {
   try {
     return await fn();
   } catch (e) {
@@ -26,6 +25,10 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     await new Promise(r => setTimeout(r, delay));
     return withRetry(fn, retries - 1, delay * 2);
   }
+};
+
+const writeString = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
 };
 
 const addWavHeader = (pcmData: Uint8Array, sampleRate: number = 24000, numChannels: number = 1): Blob => {
@@ -48,44 +51,31 @@ const addWavHeader = (pcmData: Uint8Array, sampleRate: number = 24000, numChanne
   return new Blob([header, pcmData], { type: 'audio/wav' });
 };
 
-const writeString = (view: DataView, offset: number, string: string) => {
-  for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-};
-
+/**
+ * Robust Base64 to PCM Int16 conversion
+ */
 const decodeBase64ToPCM = (base64: string): Int16Array => {
     const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
     
-    // Robust Int16 conversion avoiding buffer alignment issues
-    const pcmSamples = new Int16Array(bytes.length / 2);
-    const dv = new DataView(bytes.buffer);
-    for (let i = 0; i < pcmSamples.length; i++) {
-        pcmSamples[i] = dv.getInt16(i * 2, true); // Little-endian
-    }
-    return pcmSamples;
+    // Create a new buffer to ensure alignment
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return new Int16Array(buffer);
 };
 
 export class GeminiSTTProvider implements ISpeechToTextProvider {
   name = "Gemini 3 Flash (STT)";
   async transcribe(base64Data: string, mimeType: string): Promise<TranscriptResult> {
     const ai = getAIClient();
-    const prompt = `Transcribe the audio accurately. Return JSON: { "language": "code", "fullText": "...", "segments": [{"start": sec, "end": sec, "text": "...", "speaker": "..."}] }`;
+    const prompt = `Return JSON only: { "language": "fa", "fullText": "Combined text here", "segments": [{"start": 0.0, "end": 2.5, "text": "Segment text"}] }. Transcribe exactly what is heard.`;
     const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: { parts: [{ inlineData: { data: base64Data, mimeType: mimeType } }, { text: prompt }] },
       config: { responseMimeType: "application/json" }
     }));
-    const data = JSON.parse(response.text || "{}");
-    // Ensure segments have numeric values
-    if (data.segments) {
-        data.segments = data.segments.map((s: any) => ({
-            ...s,
-            start: Number(s.start || 0),
-            end: Number(s.end || 0)
-        }));
-    }
-    return data;
+    return JSON.parse(response.text || "{}");
   }
 }
 
@@ -93,21 +83,19 @@ export class GeminiTranslationProvider implements ITranslationProvider {
   name = "Gemini 3 Flash (Translation)";
   async translate(transcript: TranscriptResult, targetLang: string): Promise<TranslationResult> {
     const ai = getAIClient();
-    const prompt = `Translate the segments to ${targetLang}. Return exactly the same JSON structure with "start", "end", and "text" keys. The input is: ${JSON.stringify(transcript)}`;
+    const prompt = `Translate this to ${targetLang}. Preserve JSON keys: start, end, text. Format: { "segments": [...] }. Input: ${JSON.stringify(transcript.segments)}`;
     const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     }));
     const data = JSON.parse(response.text || "{}");
-    if (data.segments) {
-        data.segments = data.segments.map((s: any) => ({
-            ...s,
-            start: Number(s.start || 0),
-            end: Number(s.end || 0)
-        }));
-    }
-    return data;
+    return {
+        originalText: transcript.fullText,
+        translatedText: data.segments?.map((s: any) => s.text).join(' ') || "",
+        segments: data.segments || [],
+        targetLanguage: targetLang
+    };
   }
 }
 
@@ -117,26 +105,24 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
     const ai = getAIClient();
     const sampleRate = 24000;
     
-    if (!translation.segments || translation.segments.length === 0) {
-        throw new Error("Translation segments are empty. Cannot synthesize audio.");
-    }
+    const segments = translation.segments;
+    if (!segments || segments.length === 0) throw new Error("No segments for TTS.");
 
-    const lastSegment = translation.segments[translation.segments.length - 1];
-    const totalDuration = lastSegment ? Number(lastSegment.end) : 0;
-    const totalSamples = Math.ceil(totalDuration * sampleRate);
-    
-    if (totalSamples <= 0) throw new Error("Computed audio duration is zero.");
-    
+    // Determine total length based on the last segment's end time
+    const maxEnd = Math.max(...segments.map(s => Number(s.end)));
+    const totalSamples = Math.ceil(maxEnd * sampleRate);
     const finalBuffer = new Int16Array(totalSamples);
 
-    for (let i = 0; i < translation.segments.length; i++) {
-        const segment = translation.segments[i];
-        if (!segment.text || segment.text.trim() === "") continue;
-        
+    console.log(`Starting synthesis for ${segments.length} segments. Total duration: ${maxEnd}s`);
+
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (!seg.text.trim()) continue;
+
         try {
             const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: segment.text }] }],
+                contents: [{ parts: [{ text: seg.text }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } }
@@ -145,28 +131,29 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
 
             const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64) {
-                const segmentPCM = decodeBase64ToPCM(base64);
-                const startSample = Math.floor(Number(segment.start) * sampleRate);
+                const pcm = decodeBase64ToPCM(base64);
+                const startIdx = Math.floor(Number(seg.start) * sampleRate);
                 
-                for (let j = 0; j < segmentPCM.length; j++) {
-                    const targetIdx = startSample + j;
+                // Overlay PCM data onto the final buffer at the correct timestamp
+                for (let j = 0; j < pcm.length; j++) {
+                    const targetIdx = startIdx + j;
                     if (targetIdx < finalBuffer.length) {
-                        finalBuffer[targetIdx] = segmentPCM[j];
+                        finalBuffer[targetIdx] = pcm[j];
                     }
                 }
+                console.log(`Segment ${i+1}/${segments.length} synced at ${seg.start}s`);
             }
-            await new Promise(r => setTimeout(r, 100));
         } catch (e) {
-            console.error(`TTS Segment ${i} failed`, e);
+            console.error(`TTS Error on segment ${i}:`, e);
         }
+        // Small delay to prevent API rate limits
+        await new Promise(r => setTimeout(r, 150));
     }
 
-    const finalUint8 = new Uint8Array(finalBuffer.buffer);
-    const wavBlob = addWavHeader(finalUint8, sampleRate, 1);
-    
+    const wavBlob = addWavHeader(new Uint8Array(finalBuffer.buffer), sampleRate, 1);
     return { 
       audioUrl: URL.createObjectURL(wavBlob), 
-      duration: totalDuration, 
+      duration: maxEnd, 
       blob: wavBlob 
     };
   }
