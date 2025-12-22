@@ -11,7 +11,9 @@ import {
   DocumentTextIcon, ChatBubbleBottomCenterTextIcon,
   ClockIcon as ClockIconOutline,
   ChevronRightIcon,
-  SparklesIcon
+  SparklesIcon,
+  ArrowDownCircleIcon,
+  CheckBadgeIcon
 } from '@heroicons/react/24/outline';
 
 const LANGUAGES: Language[] = [
@@ -51,7 +53,7 @@ export default function Dashboard() {
   const [job, setJob] = useState<JobState>(INITIAL_STATE);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [history, setHistory] = useState<JobState[]>([]);
-  const [activeResultTab, setActiveResultTab] = useState<'video' | 'transcript' | 'translation'>('video');
+  const [activeResultTab, setActiveResultTab] = useState<'monitor' | 'transcript' | 'translation' | 'downloads'>('monitor');
   
   const pipelineRef = useRef<VideoPipeline | null>(null);
   const durationRef = useRef<HTMLAudioElement>(null);
@@ -108,6 +110,15 @@ export default function Dashboard() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const downloadJSON = (data: any, name: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.json`;
+    a.click();
+  };
+
   return (
     <div className="min-h-screen bg-dark-bg text-slate-200 p-4 lg:p-8 font-sans">
       <audio ref={durationRef} className="hidden" />
@@ -149,7 +160,7 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right">
                         <div className="text-5xl font-black text-brand-500 drop-shadow-[0_0_15px_rgba(14,165,233,0.4)]">{Math.round(job.progress)}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Global Progress</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Global Confidence</div>
                     </div>
                 </div>
 
@@ -252,7 +263,7 @@ export default function Dashboard() {
            {(job.transcript || job.translation || job.finalVideo || job.dubbedAudio) && (
              <div className="bg-dark-surface border border-dark-border rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-500">
                 <div className="flex border-b border-dark-border bg-slate-900/50">
-                    <button onClick={() => setActiveResultTab('video')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'video' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
+                    <button onClick={() => setActiveResultTab('monitor')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'monitor' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
                         <PlayCircleIcon className="w-5 h-5" /> Output Monitor
                     </button>
                     <button onClick={() => setActiveResultTab('transcript')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'transcript' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
@@ -261,17 +272,20 @@ export default function Dashboard() {
                     <button onClick={() => setActiveResultTab('translation')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'translation' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
                         <ChatBubbleBottomCenterTextIcon className="w-5 h-5" /> Translation
                     </button>
+                    <button onClick={() => setActiveResultTab('downloads')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'downloads' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
+                        <ArrowDownCircleIcon className="w-5 h-5" /> Artifacts
+                    </button>
                 </div>
 
                 <div className="p-8">
-                    {activeResultTab === 'video' && (
+                    {activeResultTab === 'monitor' && (
                         <div className="space-y-6">
                             {job.finalVideo ? (
                                 <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-slate-800 shadow-2xl group relative">
                                     <video src={job.finalVideo.videoUrl} controls className="w-full h-full" />
                                     <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <a href={job.finalVideo.videoUrl} download="dubbed_video.mp4" className="bg-brand-500 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl flex items-center gap-2">
-                                            <ArrowDownTrayIcon className="w-5 h-5" /> DOWNLOAD MASTER
+                                            <ArrowDownTrayIcon className="w-5 h-5" /> DOWNLOAD MP4
                                         </a>
                                     </div>
                                 </div>
@@ -280,13 +294,13 @@ export default function Dashboard() {
                                     <MusicalNoteIcon className="w-16 h-16 text-brand-500 mx-auto mb-4 opacity-50" />
                                     <h3 className="text-xl font-bold text-white mb-4 uppercase tracking-tighter">Dubbed Track Ready</h3>
                                     <audio src={job.dubbedAudio.audioUrl} controls className="w-full max-w-xl mx-auto mb-6" />
-                                    <p className="text-xs text-slate-500 uppercase font-black">Waiting for final muxing to complete...</p>
+                                    <p className="text-xs text-slate-500 uppercase font-black">Synthesized WAV is available. Finalizing video mux...</p>
                                 </div>
                             ) : (
                                 <div className="aspect-video bg-slate-900/50 rounded-3xl flex items-center justify-center border border-slate-800 animate-pulse">
                                     <div className="text-center">
                                         <SparklesIcon className="w-12 h-12 text-slate-700 mx-auto mb-2" />
-                                        <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Rendering Sequence...</p>
+                                        <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Rendering Monitor...</p>
                                     </div>
                                 </div>
                             )}
@@ -300,7 +314,7 @@ export default function Dashboard() {
                                     <div className="text-[10px] font-mono text-brand-500/60 w-16 pt-1">[{seg.start.toFixed(1)}s]</div>
                                     <div className="flex-1 text-sm text-slate-300 leading-relaxed">{seg.text}</div>
                                 </div>
-                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Transcript not available yet</div>}
+                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Extracting original audio...</div>}
                         </div>
                     )}
 
@@ -311,7 +325,54 @@ export default function Dashboard() {
                                     <div className="text-[10px] font-mono text-indigo-400/60 w-16 pt-1">[{seg.start.toFixed(1)}s]</div>
                                     <div className="flex-1 text-sm text-slate-200 leading-relaxed font-medium" dir={job.targetLang === 'fa' ? 'rtl' : 'ltr'}>{seg.text}</div>
                                 </div>
-                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Translation not available yet</div>}
+                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Applying neural translation...</div>}
+                        </div>
+                    )}
+
+                    {activeResultTab === 'downloads' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-4">
+                             <ArtifactCard 
+                                title="Final Dubbed Video" 
+                                format="MP4" 
+                                icon={<VideoCameraIcon className="w-6 h-6"/>} 
+                                ready={!!job.finalVideo} 
+                                onDownload={() => {
+                                    if(job.finalVideo) {
+                                        const a = document.createElement('a');
+                                        a.href = job.finalVideo.videoUrl;
+                                        a.download = 'dubbed_video.mp4';
+                                        a.click();
+                                    }
+                                }}
+                             />
+                             <ArtifactCard 
+                                title="Dubbed Audio Track" 
+                                format="WAV" 
+                                icon={<MusicalNoteIcon className="w-6 h-6"/>} 
+                                ready={!!job.dubbedAudio} 
+                                onDownload={() => {
+                                    if(job.dubbedAudio) {
+                                        const a = document.createElement('a');
+                                        a.href = job.dubbedAudio.audioUrl;
+                                        a.download = 'dubbed_audio.wav';
+                                        a.click();
+                                    }
+                                }}
+                             />
+                             <ArtifactCard 
+                                title="Translated Script" 
+                                format="JSON" 
+                                icon={<ChatBubbleBottomCenterTextIcon className="w-6 h-6"/>} 
+                                ready={!!job.translation} 
+                                onDownload={() => downloadJSON(job.translation, 'translation')}
+                             />
+                             <ArtifactCard 
+                                title="Original Transcript" 
+                                format="JSON" 
+                                icon={<DocumentTextIcon className="w-6 h-6"/>} 
+                                ready={!!job.transcript} 
+                                onDownload={() => downloadJSON(job.transcript, 'transcript')}
+                             />
                         </div>
                     )}
                 </div>
@@ -321,4 +382,42 @@ export default function Dashboard() {
       </main>
     </div>
   );
+}
+
+function ArtifactCard({ title, format, icon, ready, onDownload }: { title: string, format: string, icon: React.ReactNode, ready: boolean, onDownload: () => void }) {
+    return (
+        <div className={`p-6 rounded-3xl border transition-all flex flex-col justify-between h-44 ${ready ? 'bg-slate-900/50 border-slate-700 hover:border-brand-500 shadow-lg' : 'bg-dark-bg border-slate-800 opacity-50 grayscale'}`}>
+            <div className="flex justify-between items-start">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${ready ? 'bg-brand-500/10 text-brand-500' : 'bg-slate-800 text-slate-600'}`}>
+                    {icon}
+                </div>
+                <div className="text-right">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{format}</span>
+                    <div className="flex items-center gap-1 mt-1">
+                        {ready ? (
+                            <>
+                                <CheckBadgeIcon className="w-3 h-3 text-green-500" />
+                                <span className="text-[9px] font-bold text-green-500 uppercase">Ready</span>
+                            </>
+                        ) : (
+                            <>
+                                <ClockIcon className="w-3 h-3 text-slate-600" />
+                                <span className="text-[9px] font-bold text-slate-600 uppercase">Pending</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+            <div className="flex items-end justify-between">
+                <h4 className="text-sm font-bold text-white uppercase tracking-tight">{title}</h4>
+                <button 
+                    disabled={!ready} 
+                    onClick={onDownload}
+                    className="p-3 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 text-white rounded-xl transition shadow-xl"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                </button>
+            </div>
+        </div>
+    );
 }
