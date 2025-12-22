@@ -1,17 +1,17 @@
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { JobState, Voice, VoiceCategory, LogEntry, Language, Segment } from './types';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { JobState, Voice, Language } from './types';
 import { VideoPipeline } from './services/pipeline';
-import { ProviderRegistry } from './services/providers';
 import { DBService } from './services/db';
 import { 
   CloudArrowUpIcon, LanguageIcon, CpuChipIcon, VideoCameraIcon, 
-  CheckCircleIcon, ExclamationCircleIcon, PlayCircleIcon, 
-  ArrowDownTrayIcon, PlayIcon, MagnifyingGlassIcon, 
-  MusicalNoteIcon, AdjustmentsHorizontalIcon, SpeakerWaveIcon,
-  ChevronDownIcon, XMarkIcon, SparklesIcon, ClockIcon, TrashIcon,
+  CheckCircleIcon, PlayCircleIcon, 
+  PlayIcon, MusicalNoteIcon, 
+  ClockIcon, ArrowDownTrayIcon,
   DocumentTextIcon, ChatBubbleBottomCenterTextIcon,
-  ClockIcon as ClockIconOutline
+  ClockIcon as ClockIconOutline,
+  ChevronRightIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 
 const LANGUAGES: Language[] = [
@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [job, setJob] = useState<JobState>(INITIAL_STATE);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [history, setHistory] = useState<JobState[]>([]);
+  const [activeResultTab, setActiveResultTab] = useState<'video' | 'transcript' | 'translation'>('video');
   
   const pipelineRef = useRef<VideoPipeline | null>(null);
   const durationRef = useRef<HTMLAudioElement>(null);
@@ -148,11 +149,10 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right">
                         <div className="text-5xl font-black text-brand-500 drop-shadow-[0_0_15px_rgba(14,165,233,0.4)]">{Math.round(job.progress)}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Global Confidence</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Global Progress</div>
                     </div>
                 </div>
 
-                {/* Main Progress Bar */}
                 <div className="mb-14">
                     <div className="w-full h-5 bg-slate-900 rounded-full p-1 border border-slate-800 shadow-inner">
                         <div className="h-full bg-gradient-to-r from-brand-600 to-indigo-600 rounded-full transition-all duration-1000 relative" style={{ width: `${job.progress}%` }}>
@@ -161,7 +161,6 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Metro Steps (With Base Line) */}
                 <div className="relative mb-14 px-8">
                    <div className="absolute top-7 left-14 right-14 h-[3px] bg-white/40 rounded-full -z-0 shadow-inner"></div>
                    <div className="absolute top-7 left-14 h-[3px] bg-brand-500 transition-all duration-1000 -z-0 shadow-[0_0_15px_rgba(14,165,233,0.6)]" style={{ width: `${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}%` }}></div>
@@ -232,7 +231,6 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Activity Logs */}
                 <div className="mt-8 bg-black/60 rounded-2xl border border-slate-800 p-6 shadow-inner">
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-[10px] font-black text-slate-600 uppercase">Deployment Telemetry</span>
@@ -250,8 +248,75 @@ export default function Dashboard() {
                 </div>
            </div>
 
-           {/* Results sections below omitted for brevity as they haven't changed */}
-           {/* ... existing code for results and media exports ... */}
+           {/* Results Explorer */}
+           {(job.transcript || job.translation || job.finalVideo || job.dubbedAudio) && (
+             <div className="bg-dark-surface border border-dark-border rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-500">
+                <div className="flex border-b border-dark-border bg-slate-900/50">
+                    <button onClick={() => setActiveResultTab('video')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'video' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
+                        <PlayCircleIcon className="w-5 h-5" /> Output Monitor
+                    </button>
+                    <button onClick={() => setActiveResultTab('transcript')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'transcript' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
+                        <DocumentTextIcon className="w-5 h-5" /> Transcript
+                    </button>
+                    <button onClick={() => setActiveResultTab('translation')} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition ${activeResultTab === 'translation' ? 'text-brand-500 bg-dark-surface' : 'text-slate-500 hover:text-white'}`}>
+                        <ChatBubbleBottomCenterTextIcon className="w-5 h-5" /> Translation
+                    </button>
+                </div>
+
+                <div className="p-8">
+                    {activeResultTab === 'video' && (
+                        <div className="space-y-6">
+                            {job.finalVideo ? (
+                                <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-slate-800 shadow-2xl group relative">
+                                    <video src={job.finalVideo.videoUrl} controls className="w-full h-full" />
+                                    <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <a href={job.finalVideo.videoUrl} download="dubbed_video.mp4" className="bg-brand-500 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl flex items-center gap-2">
+                                            <ArrowDownTrayIcon className="w-5 h-5" /> DOWNLOAD MASTER
+                                        </a>
+                                    </div>
+                                </div>
+                            ) : job.dubbedAudio ? (
+                                <div className="bg-slate-900/50 p-10 rounded-3xl border border-slate-800 text-center">
+                                    <MusicalNoteIcon className="w-16 h-16 text-brand-500 mx-auto mb-4 opacity-50" />
+                                    <h3 className="text-xl font-bold text-white mb-4 uppercase tracking-tighter">Dubbed Track Ready</h3>
+                                    <audio src={job.dubbedAudio.audioUrl} controls className="w-full max-w-xl mx-auto mb-6" />
+                                    <p className="text-xs text-slate-500 uppercase font-black">Waiting for final muxing to complete...</p>
+                                </div>
+                            ) : (
+                                <div className="aspect-video bg-slate-900/50 rounded-3xl flex items-center justify-center border border-slate-800 animate-pulse">
+                                    <div className="text-center">
+                                        <SparklesIcon className="w-12 h-12 text-slate-700 mx-auto mb-2" />
+                                        <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Rendering Sequence...</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeResultTab === 'transcript' && (
+                        <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-4">
+                            {job.transcript?.segments.map((seg, i) => (
+                                <div key={i} className="flex gap-6 p-5 bg-dark-bg/40 rounded-2xl border border-slate-800/50 group hover:border-brand-500/30 transition-all">
+                                    <div className="text-[10px] font-mono text-brand-500/60 w-16 pt-1">[{seg.start.toFixed(1)}s]</div>
+                                    <div className="flex-1 text-sm text-slate-300 leading-relaxed">{seg.text}</div>
+                                </div>
+                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Transcript not available yet</div>}
+                        </div>
+                    )}
+
+                    {activeResultTab === 'translation' && (
+                        <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-4">
+                            {job.translation?.segments.map((seg, i) => (
+                                <div key={i} className="flex gap-6 p-5 bg-indigo-500/5 rounded-2xl border border-indigo-500/10 group hover:border-indigo-500/30 transition-all">
+                                    <div className="text-[10px] font-mono text-indigo-400/60 w-16 pt-1">[{seg.start.toFixed(1)}s]</div>
+                                    <div className="flex-1 text-sm text-slate-200 leading-relaxed font-medium" dir={job.targetLang === 'fa' ? 'rtl' : 'ltr'}>{seg.text}</div>
+                                </div>
+                            )) || <div className="text-center py-20 text-slate-700 font-black uppercase tracking-widest italic">Translation not available yet</div>}
+                        </div>
+                    )}
+                </div>
+             </div>
+           )}
         </div>
       </main>
     </div>
