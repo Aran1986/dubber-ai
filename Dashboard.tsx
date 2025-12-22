@@ -8,7 +8,6 @@ import {
   CheckCircleIcon, PlayCircleIcon, 
   PlayIcon, MusicalNoteIcon, 
   ClockIcon, ArrowDownTrayIcon,
-  DocumentTextIcon, ChatBubbleBottomCenterTextIcon,
   ClockIcon as ClockIconOutline
 } from '@heroicons/react/24/outline';
 
@@ -95,7 +94,7 @@ export default function Dashboard() {
         {/* Sidebar History */}
         <div className="lg:col-span-3">
            <div className="bg-dark-surface border border-dark-border rounded-3xl p-6 shadow-xl h-full flex flex-col">
-              <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2"><ClockIcon className="w-4 h-4 text-brand-500" /> Recent Activity</h2>
+              <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2 font-sans"><ClockIcon className="w-4 h-4 text-brand-500" /> Recent Activity</h2>
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                  {history.map(p => (
                     <div key={p.id} onClick={() => setJob(p)} className={`p-4 rounded-2xl border cursor-pointer transition ${job.id === p.id ? 'bg-brand-500/10 border-brand-500' : 'border-slate-800 bg-dark-bg/40 hover:border-slate-700'}`}>
@@ -104,7 +103,6 @@ export default function Dashboard() {
                         <div className={`text-[9px] font-black uppercase inline-block px-2 py-0.5 rounded-full ${p.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : 'bg-brand-500/20 text-brand-400'}`}>{p.status}</div>
                     </div>
                  ))}
-                 {history.length === 0 && <div className="text-[10px] text-slate-600 italic text-center mt-10">No history found.</div>}
               </div>
            </div>
         </div>
@@ -124,12 +122,11 @@ export default function Dashboard() {
                 </div>
 
                 <div className="w-full h-1 bg-slate-900 rounded-full mb-14 overflow-hidden border border-slate-800">
-                    <div className="h-full bg-brand-500 transition-all duration-700" style={{ width: `${job.progress}%` }}></div>
+                    <div className="h-full bg-brand-500 transition-all duration-700 shadow-[0_0_10px_#0ea5e9]" style={{ width: `${job.progress}%` }}></div>
                 </div>
 
-                {/* Pipeline UI - Corrected Centering */}
+                {/* Pipeline Tracker */}
                 <div className="relative mb-14 mx-auto w-full max-w-5xl px-7">
-                   {/* Background Track - 28px offset for centering on icons (w-14) */}
                    <div className="absolute top-7 left-[28px] right-[28px] h-[3px] bg-slate-800 rounded-full overflow-hidden">
                       <div className="h-full bg-brand-500 transition-all duration-1000 shadow-[0_0_15px_#0ea5e9]" 
                            style={{ width: getProgressWidth() }}></div>
@@ -151,6 +148,7 @@ export default function Dashboard() {
                    </div>
                 </div>
 
+                {/* Controls */}
                 <div className="grid md:grid-cols-2 gap-6 p-6 bg-slate-900/40 rounded-3xl border border-slate-800">
                     <div>
                         <label className="text-[10px] font-black text-slate-500 uppercase mb-3 block tracking-widest pl-1">Input Payload</label>
@@ -201,7 +199,7 @@ export default function Dashboard() {
                           <span>{log.message}</span>
                         </div>
                       ))}
-                      {job.logs.length === 0 && <div className="text-slate-800 italic">Ready for input...</div>}
+                      {job.logs.length === 0 && <div className="text-slate-800 italic">Engine ready for instructions...</div>}
                   </div>
                 </div>
            </div>
@@ -234,16 +232,18 @@ export default function Dashboard() {
                                    <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-widest">Dubbed Track Ready</h3>
                                    <audio src={job.dubbedAudio.audioUrl} controls className="w-full max-w-lg mx-auto" />
                                </div>
-                           ) : <div className="aspect-video bg-slate-900/20 rounded-3xl flex items-center justify-center italic text-slate-700">Awaiting Render...</div>}
+                           ) : <div className="aspect-video bg-slate-900/20 rounded-3xl flex items-center justify-center italic text-slate-700">Awaiting Render completion...</div>}
                         </div>
                     )}
 
                     {(activeTab === 'transcript' || activeTab === 'translation') && (
-                        <div className="bg-dark-bg/60 p-6 rounded-2xl border border-slate-800 max-h-96 overflow-y-auto leading-loose text-sm text-slate-300">
+                        <div className="bg-dark-bg/60 p-6 rounded-2xl border border-slate-800 max-h-96 overflow-y-auto leading-loose text-sm text-slate-300" dir={activeTab === 'transcript' ? 'rtl' : 'ltr'}>
                            {activeTab === 'transcript' ? 
-                             (job.transcript?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>)) : 
-                             (job.translation?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>))
+                             (job.transcript?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mx-1 border-b border-white/5 pb-1" title={`${s.start}s - ${s.end}s`}>{s.text}</span>)) : 
+                             (job.translation?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mx-1 border-b border-white/5 pb-1" title={`${s.start}s - ${s.end}s`}>{s.text}</span>))
                            }
+                           {(!job.transcript?.segments && activeTab === 'transcript') && <p className="italic text-slate-600">No segments recovered from STT engine.</p>}
+                           {(!job.translation?.segments && activeTab === 'translation') && <p className="italic text-slate-600">No segments recovered from Translation engine.</p>}
                         </div>
                     )}
 

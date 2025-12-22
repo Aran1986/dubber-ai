@@ -7,32 +7,29 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
 
   private decodeBase64ToPCM(base64: string): Int16Array {
     const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-    
-    const sampleCount = Math.floor(len / 2);
-    const pcm = new Int16Array(sampleCount);
-    const view = new DataView(bytes.buffer);
-    for (let i = 0; i < sampleCount; i++) {
-      pcm[i] = view.getInt16(i * 2, true); // Little-endian PCM 16-bit
+    const buffer = new ArrayBuffer(binaryString.length);
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
     }
-    return pcm;
+    // Gemini TTS returns 16-bit PCM (2 bytes per sample)
+    return new Int16Array(buffer);
   }
 
-  private addWavHeader(pcmData: Uint8Array, sampleRate: number): Blob {
+  private addWavHeader(pcmData: Int16Array, sampleRate: number): Blob {
+    const totalDataLen = pcmData.length * 2;
     const header = new ArrayBuffer(44);
     const view = new DataView(header);
-    const totalDataLen = pcmData.length;
     const writeString = (v: DataView, o: number, s: string) => {
       for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
     };
+
     writeString(view, 0, 'RIFF');
     view.setUint32(4, totalDataLen + 36, true);
     writeString(view, 8, 'WAVE');
     writeString(view, 12, 'fmt ');
     view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); // PCM format
+    view.setUint16(20, 1, true); // PCM
     view.setUint16(22, 1, true); // Mono
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * 2, true);
@@ -40,6 +37,7 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
     view.setUint16(34, 16, true);
     writeString(view, 36, 'data');
     view.setUint32(40, totalDataLen, true);
+
     return new Blob([header, pcmData], { type: 'audio/wav' });
   }
 
@@ -48,17 +46,18 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
     const sampleRate = 24000;
     const segments = translation.segments;
     
-    if (!segments || segments.length === 0) throw new Error("No segments to synthesize.");
+    if (!segments || segments.length === 0) throw new Error("No segments for dubbing.");
 
-    const maxDuration = Math.max(...segments.map(s => Number(s.end)));
-    const totalSamples = Math.ceil(maxDuration * sampleRate);
+    // Determine duration and buffer size
+    const maxEnd = Math.max(...segments.map(s => Number(s.end)));
+    const totalSamples = Math.ceil((maxEnd + 2) * sampleRate); // +2s buffer for safety
     const finalPCM = new Int16Array(totalSamples);
 
-    console.log(`Starting synthesis for ${segments.length} segments.`);
+    console.log(`Dubbing Engine: Processing ${segments.length} segments into ${maxEnd}s master track.`);
 
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      if (!seg.text.trim()) continue;
+      if (!seg.text || !seg.text.trim()) continue;
 
       try {
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -66,7 +65,9 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
           contents: [{ parts: [{ text: seg.text }] }],
           config: {
             responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } }
+            speechConfig: { 
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } 
+            }
           }
         });
 
@@ -75,25 +76,29 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
           const segmentPCM = this.decodeBase64ToPCM(base64);
           const startSample = Math.floor(Number(seg.start) * sampleRate);
           
-          // Place segment audio precisely in the master buffer
+          // Place segment audio in the master track
           for (let j = 0; j < segmentPCM.length; j++) {
             const targetIdx = startSample + j;
             if (targetIdx < finalPCM.length) {
               finalPCM[targetIdx] = segmentPCM[j];
             }
           }
-          console.log(`Segment ${i+1}/${segments.length} placed at ${seg.start}s`);
+          console.log(`Placed segment ${i+1} at offset ${seg.start}s (${segmentPCM.length} samples)`);
         }
       } catch (e) {
-        console.error(`TTS Synthesis Error on segment ${i}:`, e);
+        console.error(`Segment ${i} synthesis failed:`, e);
       }
-      await new Promise(r => setTimeout(r, 250)); // Rate limit protection
+      
+      // Essential delay for rate limiting in long transcriptions
+      if (segments.length > 5) await new Promise(r => setTimeout(r, 200));
     }
 
-    const wavBlob = this.addWavHeader(new Uint8Array(finalPCM.buffer), sampleRate);
+    const wavBlob = this.addWavHeader(finalPCM, sampleRate);
+    const audioUrl = URL.createObjectURL(wavBlob);
+
     return {
-      audioUrl: URL.createObjectURL(wavBlob),
-      duration: maxDuration,
+      audioUrl,
+      duration: maxEnd,
       blob: wavBlob
     };
   }
