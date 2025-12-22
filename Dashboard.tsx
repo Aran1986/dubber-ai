@@ -9,10 +9,7 @@ import {
   PlayIcon, MusicalNoteIcon, 
   ClockIcon, ArrowDownTrayIcon,
   DocumentTextIcon, ChatBubbleBottomCenterTextIcon,
-  ClockIcon as ClockIconOutline,
-  SparklesIcon,
-  ArrowDownCircleIcon,
-  CheckBadgeIcon
+  ClockIcon as ClockIconOutline
 } from '@heroicons/react/24/outline';
 
 const LANGUAGES: Language[] = [
@@ -83,6 +80,13 @@ export default function Dashboard() {
     return currentIdx > idx || job.status === 'COMPLETED';
   };
 
+  const getProgressWidth = () => {
+    const idx = STEPS.findIndex(s => s.id === job.status);
+    if (idx < 0) return '0%';
+    if (job.status === 'COMPLETED') return '100%';
+    return `${(idx / (STEPS.length - 1)) * 100}%`;
+  };
+
   return (
     <div className="min-h-screen bg-dark-bg p-4 lg:p-8">
       <audio ref={durationRef} className="hidden" />
@@ -100,6 +104,7 @@ export default function Dashboard() {
                         <div className={`text-[9px] font-black uppercase inline-block px-2 py-0.5 rounded-full ${p.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : 'bg-brand-500/20 text-brand-400'}`}>{p.status}</div>
                     </div>
                  ))}
+                 {history.length === 0 && <div className="text-[10px] text-slate-600 italic text-center mt-10">No history found.</div>}
               </div>
            </div>
         </div>
@@ -110,9 +115,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-start mb-10">
                     <div>
                         <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Studio Pipeline</h2>
-                        <div className="flex items-center gap-6 mt-2">
-                          <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2"><ClockIconOutline className="w-4 h-4" /> Time: <span className="text-white">{(elapsedTime / 1000).toFixed(0)}s</span></div>
-                        </div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2 mt-2"><ClockIconOutline className="w-4 h-4" /> Time: <span className="text-white">{(elapsedTime / 1000).toFixed(0)}s</span></div>
                     </div>
                     <div className="text-right">
                         <div className="text-5xl font-black text-brand-500">{Math.round(job.progress)}%</div>
@@ -120,21 +123,23 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                <div className="w-full h-2 bg-slate-900 rounded-full mb-14 overflow-hidden border border-slate-800">
-                    <div className="h-full bg-brand-500 transition-all duration-700 shadow-[0_0_10px_#0ea5e9]" style={{ width: `${job.progress}%` }}></div>
+                <div className="w-full h-1 bg-slate-900 rounded-full mb-14 overflow-hidden border border-slate-800">
+                    <div className="h-full bg-brand-500 transition-all duration-700" style={{ width: `${job.progress}%` }}></div>
                 </div>
 
-                {/* Fixed Progress Line UI */}
-                <div className="relative mb-14 px-10">
-                   <div className="absolute top-7 left-[52px] right-[52px] h-[3px] bg-slate-800 rounded-full"></div>
-                   <div className="absolute top-7 left-[52px] h-[3px] bg-brand-500 transition-all duration-1000 shadow-[0_0_15px_#0ea5e9]" 
-                        style={{ width: `calc(${Math.max(0, (STEPS.findIndex(s => s.id === job.status)) * (100 / (STEPS.length - 1)))}% )` }}></div>
+                {/* Pipeline UI - Corrected Centering */}
+                <div className="relative mb-14 mx-auto w-full max-w-5xl px-7">
+                   {/* Background Track - 28px offset for centering on icons (w-14) */}
+                   <div className="absolute top-7 left-[28px] right-[28px] h-[3px] bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-500 transition-all duration-1000 shadow-[0_0_15px_#0ea5e9]" 
+                           style={{ width: getProgressWidth() }}></div>
+                   </div>
 
                    <div className="flex items-center w-full justify-between relative z-10">
                       {STEPS.map((s, idx) => (
                         <div key={idx} className="flex flex-col items-center gap-4">
                           <div className={`w-14 h-14 rounded-full flex items-center justify-center border-[4px] bg-dark-surface transition-all duration-500
-                                ${job.status === s.id ? 'border-brand-500 scale-125 text-brand-500 shadow-2xl shadow-brand-500/20' : 
+                                ${job.status === s.id ? 'border-brand-500 scale-125 text-brand-500 shadow-2xl' : 
                                   isStepDone(idx) ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-800 text-slate-700'}
                             `}
                           >
@@ -196,6 +201,7 @@ export default function Dashboard() {
                           <span>{log.message}</span>
                         </div>
                       ))}
+                      {job.logs.length === 0 && <div className="text-slate-800 italic">Ready for input...</div>}
                   </div>
                 </div>
            </div>
@@ -235,8 +241,8 @@ export default function Dashboard() {
                     {(activeTab === 'transcript' || activeTab === 'translation') && (
                         <div className="bg-dark-bg/60 p-6 rounded-2xl border border-slate-800 max-h-96 overflow-y-auto leading-loose text-sm text-slate-300">
                            {activeTab === 'transcript' ? 
-                             (job.transcript?.segments.map(s => <span key={s.start} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>)) : 
-                             (job.translation?.segments.map(s => <span key={s.start} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>))
+                             (job.transcript?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>)) : 
+                             (job.translation?.segments.map((s, i) => <span key={i} className="hover:text-brand-400 transition cursor-help mr-1" title={`${s.start}s`}>{s.text}</span>))
                            }
                         </div>
                     )}
