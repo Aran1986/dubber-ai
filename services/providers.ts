@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
 import { 
   ISpeechToTextProvider, 
   ITranslationProvider, 
@@ -17,20 +17,15 @@ const getAIClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-const createSilence = (durationSec: number, sampleRate: number): Uint8Array => {
-    const numSamples = Math.floor(durationSec * sampleRate);
-    return new Uint8Array(numSamples * 2); 
-};
-
-const concatenateBuffers = (buffers: Uint8Array[]): Uint8Array => {
-    const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buffer of buffers) {
-        result.set(buffer, offset);
-        offset += buffer.length;
-    }
-    return result;
+// Helper for retrying failed API calls (common in free tier)
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (e) {
+    if (retries <= 0) throw e;
+    await new Promise(r => setTimeout(r, delay));
+    return withRetry(fn, retries - 1, delay * 2);
+  }
 };
 
 const addWavHeader = (pcmData: Uint8Array, sampleRate: number = 24000, numChannels: number = 1): Blob => {
@@ -69,11 +64,12 @@ export class GeminiSTTProvider implements ISpeechToTextProvider {
   async transcribe(base64Data: string, mimeType: string): Promise<TranscriptResult> {
     const ai = getAIClient();
     const prompt = `Transcribe the audio accurately. Return JSON: { "language": "code", "fullText": "...", "segments": [{"start": sec, "end": sec, "text": "...", "speaker": "..."}] }`;
-    const response = await ai.models.generateContent({
+    // Added GenerateContentResponse type to fix "Property 'text' does not exist on type 'unknown'"
+    const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: { parts: [{ inlineData: { data: base64Data, mimeType: mimeType } }, { text: prompt }] },
       config: { responseMimeType: "application/json" }
-    });
+    }));
     return JSON.parse(response.text || "{}");
   }
 }
@@ -83,11 +79,12 @@ export class GeminiTranslationProvider implements ITranslationProvider {
   async translate(transcript: TranscriptResult, targetLang: string): Promise<TranslationResult> {
     const ai = getAIClient();
     const prompt = `Translate to ${targetLang}. Preserve JSON structure and timestamps exactly: ${JSON.stringify(transcript)}`;
-    const response = await ai.models.generateContent({
+    // Added GenerateContentResponse type to fix "Property 'text' does not exist on type 'unknown'"
+    const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
-    });
+    }));
     return JSON.parse(response.text || "{}");
   }
 }
@@ -96,45 +93,66 @@ export class GeminiTTSProvider implements ITextToSpeechProvider {
   name = "Gemini 2.5 Flash TTS";
   async synthesize(translation: TranslationResult, voiceId: string = 'Puck'): Promise<AudioResult> {
     const ai = getAIClient();
-    const voiceName = voiceId;
     const sampleRate = 24000;
-    const audioBuffers: Uint8Array[] = [];
-    let currentTimeCursor = 0;
+    
+    // 1. Calculate final buffer size based on the end of the last segment
+    const lastSegment = translation.segments[translation.segments.length - 1];
+    const totalDuration = lastSegment ? lastSegment.end : 0;
+    const totalSamples = Math.ceil(totalDuration * sampleRate);
+    
+    // We use Int16Array for precise audio manipulation, then convert to Uint8 for WAV
+    const finalBuffer = new Int16Array(totalSamples);
 
     for (let i = 0; i < translation.segments.length; i++) {
         const segment = translation.segments[i];
-        const gap = segment.start - currentTimeCursor;
-        if (gap > 0.05) audioBuffers.push(createSilence(gap, sampleRate));
         
         try {
-            // Log progress for each segment
-            console.debug(`Synthesizing segment ${i+1}/${translation.segments.length}`);
+            console.debug(`Synthesizing segment ${i+1}/${translation.segments.length}: "${segment.text.substring(0, 20)}..."`);
             
-            const response = await ai.models.generateContent({
+            // Added GenerateContentResponse type to fix "Property 'candidates' does not exist on type 'unknown'"
+            const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
                 contents: [{ parts: [{ text: segment.text }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } }
                 }
-            });
+            }));
+
             const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64) {
                 const bytes = decodeBase64ToBytes(base64);
-                audioBuffers.push(bytes);
-                currentTimeCursor = segment.end; 
+                const segmentData = new Int16Array(bytes.buffer);
+                
+                // ABSOLUTE POSITIONING: Force the audio to start at the exact timestamp
+                const startSample = Math.floor(segment.start * sampleRate);
+                
+                for (let j = 0; j < segmentData.length; j++) {
+                    const targetIdx = startSample + j;
+                    if (targetIdx < finalBuffer.length) {
+                        // Blend or overwrite? Overwrite is usually cleaner for dubbing
+                        finalBuffer[targetIdx] = segmentData[j];
+                    }
+                }
             }
+            
+            // Artificial stagger to avoid hitting RPM limits even with retries
+            await new Promise(r => setTimeout(r, 200));
+
         } catch (e) {
-            console.error(`TTS Segment ${i} failed`, e);
-            // Push silence if segment fails to keep timeline synced
-            audioBuffers.push(createSilence(segment.end - segment.start, sampleRate));
-            currentTimeCursor = segment.end;
+            console.error(`TTS Segment ${i} permanently failed after retries`, e);
         }
     }
 
-    const finalPCM = concatenateBuffers(audioBuffers);
-    const wavBlob = addWavHeader(finalPCM, sampleRate, 1);
-    return { audioUrl: URL.createObjectURL(wavBlob), duration: currentTimeCursor, blob: wavBlob };
+    // Convert Int16 buffer back to Uint8 for WAV header compatibility
+    const finalUint8 = new Uint8Array(finalBuffer.buffer);
+    const wavBlob = addWavHeader(finalUint8, sampleRate, 1);
+    
+    return { 
+      audioUrl: URL.createObjectURL(wavBlob), 
+      duration: totalDuration, 
+      blob: wavBlob 
+    };
   }
 }
 
